@@ -1,0 +1,692 @@
+import mongoose from "mongoose";
+
+// ============================================================
+// PAYMENT DETAILS
+// ============================================================
+
+const paymentDetailSchema = new mongoose.Schema(
+  {
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    paymentDate: {
+      type: Date,
+      default: Date.now,
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"],
+      default: "CASH",
+    },
+
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    attachment: {
+      type: String,
+      default: null,
+    },
+
+    // Who actually handled this specific payment - full audit trail
+    // for multi-user cash handling. Optional/unset on payments
+    // recorded before this field existed, and until the corresponding
+    // controller work populates it from req.user - kept non-required
+    // here so today's existing payment-recording flow (which doesn't
+    // set this yet) isn't broken by this schema-only change. Never
+    // affects freeze logic - paymentDetails stays outside
+    // SALE_FROZEN_FIELDS regardless.
+    handledBy: {
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      name: {
+        type: String,
+        default: "",
+      },
+      role: {
+        type: String,
+        default: "",
+      },
+    },
+  },
+  { _id: false },
+);
+
+// ============================================================
+// SALE ITEM
+// ============================================================
+
+const saleItemSchema = new mongoose.Schema(
+  {
+    // ----------------------------------------------------------
+    // PRODUCT
+    // ----------------------------------------------------------
+
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+
+    productCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    modelNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    productName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    isSerialized: {
+      type: Boolean,
+      required: true,
+    },
+
+    // ----------------------------------------------------------
+    // SERIALIZED PRODUCT
+    // ----------------------------------------------------------
+
+    productSerialId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductSerial",
+      default: null,
+    },
+
+    serialNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------------------
+    // NON-SERIALIZED PRODUCT / BATCH
+    // ----------------------------------------------------------
+
+    // A non-serialized sale line always represents exactly one batch
+    // (matches the barcode-scan-driven flow - scanning AAP20WCH-B001
+    // identifies one specific batch; a second batch becomes a second
+    // line, never merged into this one). These flat fields are what
+    // new sales populate going forward.
+    batchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Batch",
+      default: null,
+    },
+
+    batchNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    barcode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    purchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Purchase",
+      default: null,
+    },
+
+    purchaseNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // DEPRECATED - kept only so historical Sale documents created
+    // before the one-batch-per-line change remain fully readable
+    // through this model without a data migration. Never populated by
+    // new sales; do not remove without a schema-version-aware read
+    // path, since old financial records must never be rewritten to
+    // fit a newer shape.
+    batches: [
+      {
+        batchId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Batch",
+          required: true,
+        },
+
+        batchNumber: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+
+        barcode: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+
+        purchaseId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Purchase",
+          default: null,
+        },
+
+        purchaseNumber: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        quantity: {
+          type: Number,
+          required: true,
+          min: 1,
+        },
+
+        purchasePrice: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+
+        sellingPrice: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+
+        profit: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+      },
+      { _id: false },
+    ],
+
+    // ----------------------------------------------------------
+    // QUANTITY
+    // ----------------------------------------------------------
+
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    // ----------------------------------------------------------
+    // PRICE
+    // ----------------------------------------------------------
+
+    purchasePrice: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    sellingPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
+    // DISCOUNT
+    // ----------------------------------------------------------
+
+    discount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
+    // GST
+    // ----------------------------------------------------------
+
+    gstApplicable: {
+      type: Boolean,
+      default: false,
+    },
+
+    gstPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    gstAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    hsnCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------------------
+    // AMOUNTS
+    // ----------------------------------------------------------
+
+    subtotal: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    finalAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
+    // PROFIT
+    // ----------------------------------------------------------
+
+    profit: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    profitAfterGst: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+  },
+  { _id: false },
+);
+
+// ============================================================
+// SALE
+// ============================================================
+
+const salesSchema = new mongoose.Schema(
+  {
+    saleNumber: {
+      type: String,
+      unique: true,
+      required: true,
+      trim: true,
+    },
+
+    // ----------------------------------------------------------
+    // BRANCH
+    // ----------------------------------------------------------
+
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
+
+    // ----------------------------------------------------------
+    // CUSTOMER
+    // ----------------------------------------------------------
+
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+
+    // Customer details exactly as they were at the moment of sale -
+    // protects historical invoices from later Customer edits.
+    // Optional/unset on documents created before this field existed.
+    customerSnapshot: {
+      name: { type: String, default: "" },
+      mobile: { type: String, default: "" },
+      email: { type: String, default: "" },
+      gstNumber: { type: String, default: "" },
+    },
+
+    // ----------------------------------------------------------
+    // DATE
+    // ----------------------------------------------------------
+
+    saleDate: {
+      type: Date,
+      default: Date.now,
+    },
+
+    // ----------------------------------------------------------
+    // ITEMS
+    // ----------------------------------------------------------
+
+    items: {
+      type: [saleItemSchema],
+      required: true,
+      validate: {
+        validator: function (items) {
+          return items.length > 0;
+        },
+        message: "Sale must contain at least one item",
+      },
+    },
+
+    // ----------------------------------------------------------
+    // TOTALS
+    // ----------------------------------------------------------
+
+    subtotalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalDiscount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalGstAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalProfit: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalProfitAfterGst: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
+    // PAYMENT
+    // ----------------------------------------------------------
+
+    paymentDetails: {
+      type: [paymentDetailSchema],
+      default: [],
+    },
+
+    // PAID / PARTIAL / UNPAID (never "PENDING" - "pending" is
+    // ambiguous with pendingAmount, which is also >0 for PARTIAL).
+    // UNPAID = paidAmount 0 and pendingAmount === totalAmount.
+    paymentStatus: {
+      type: String,
+      enum: ["PAID", "PARTIAL", "UNPAID"],
+      default: "UNPAID",
+    },
+
+    paidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    pendingAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
+    // SIGNATURE
+    // ----------------------------------------------------------
+
+    signatureFile: {
+      type: String,
+      default: null,
+    },
+
+    // ----------------------------------------------------------
+    // SYSTEM INVOICE (auto-generated PDF, mirrors Purchase's
+    // systemInvoiceFile - a sale is never re-invoiced, only ever
+    // invoiced once; see generateSaleInvoicePdf.js for the guard)
+    // ----------------------------------------------------------
+
+    systemInvoiceFile: {
+      type: String,
+      default: null,
+    },
+
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
+
+    status: {
+      type: String,
+      enum: ["DRAFT", "COMPLETED", "CANCELLED"],
+      default: "COMPLETED",
+    },
+
+    // ----------------------------------------------------------
+    // NOTES
+    // ----------------------------------------------------------
+
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------------------
+    // AUDIT
+    // ----------------------------------------------------------
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // ----------------------------------------------------------
+    // FLAGS
+    // ----------------------------------------------------------
+
+    isCancelled: {
+      type: Boolean,
+      default: false,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
+// ============================================================
+// INDEXES
+// ============================================================
+
+// saleNumber already has unique: true (field-level) - no redundant
+// explicit index() call for it (matches Purchase.modal.js's convention,
+// which also relies solely on the field-level unique index).
+// Every list/stats query filters on isDeleted first (see
+// getAllSalesController), so every compound index leads with it -
+// matches the convention already proven on Purchase.modal.js.
+salesSchema.index({ isDeleted: 1, saleDate: -1 });
+salesSchema.index({ isDeleted: 1, branchId: 1 });
+salesSchema.index({ isDeleted: 1, customerId: 1 });
+salesSchema.index({ isDeleted: 1, paymentStatus: 1 });
+salesSchema.index({ isDeleted: 1, status: 1 });
+
+// ============================================================
+// FIELD-LEVEL HISTORICAL FREEZE
+// ============================================================
+// A sale is editable while it's a DRAFT. Once it leaves DRAFT
+// (COMPLETED or CANCELLED - anything other than DRAFT represents a
+// finalized transaction, not a work-in-progress one), the fields that
+// describe what was actually sold/to-whom/for-how-much must never be
+// rewritten - that's the historical record/invoice. Payment
+// collection and status transitions (e.g. cancelling) are real,
+// legitimate workflows that continue after completion, so those stay
+// mutable.
+//
+// Frozen once no longer DRAFT: items (including the legacy batches[]
+// shape on old documents - it's covered by the "items" entry below,
+// since the whole items array is one modified path), totals, GST
+// totals, customer identity/snapshot, branch, and sale date.
+// Stays mutable always: paymentStatus, paidAmount, pendingAmount,
+// paymentDetails, status itself, notes, signatureFile, isCancelled/
+// isActive, updatedBy, isDeleted/deletedAt (soft-delete stays possible
+// per this project's soft-delete-only convention).
+const SALE_FROZEN_FIELDS = [
+  "items",
+  "subtotalAmount",
+  "totalDiscount",
+  "totalGstAmount",
+  "totalProfit",
+  "totalProfitAfterGst",
+  "totalAmount",
+  "customerId",
+  "customerSnapshot",
+  "branchId",
+  "saleDate",
+];
+
+// Captures the persisted status at load time, before any in-memory
+// modification - post('init') fires only when a document is hydrated
+// from the database (not on `new Sale()`/.create()), so this never
+// runs for a genuinely new document.
+salesSchema.post("init", function () {
+  this.$locals.wasFrozen = this.status !== "DRAFT";
+});
+
+// Promise-style middleware (no `next` parameter) - Mongoose 9 removed
+// callback-style hooks entirely; a `next` argument is simply never
+// passed, regardless of function signature. Throwing rejects.
+salesSchema.pre("save", function () {
+  if (this.isNew) return;
+  if (!this.$locals.wasFrozen) return;
+
+  const modifiedFrozenFields = SALE_FROZEN_FIELDS.filter((field) => this.isModified(field));
+  if (modifiedFrozenFields.length > 0) {
+    throw new Error(
+      `Cannot modify ${modifiedFrozenFields.join(", ")} on a sale that is no longer DRAFT - ` +
+      `these fields are frozen once a sale is finalized. Payment fields and status remain editable.`
+    );
+  }
+});
+
+// ============================================================
+// QUERY-LEVEL FREEZE PROTECTION
+// ============================================================
+// Same reasoning as Purchase: updateOne/updateMany/findOneAndUpdate
+// never construct a Document and never trigger pre('save'), so they
+// bypass the guard above entirely. No controller currently does this
+// against Sale (confirmed by a full-backend search - there is no
+// update route for Sale at all today), but the guard is added
+// proactively here for the same reason it's needed on Purchase, so a
+// future update-style Sale controller can't silently reintroduce the
+// same bypass.
+async function guardSaleQueryUpdate() {
+  const update = this.getUpdate() || {};
+  const touchedPaths = new Set();
+
+  for (const key of Object.keys(update)) {
+    if (key.startsWith("$")) {
+      for (const path of Object.keys(update[key] || {})) {
+        touchedPaths.add(path.split(".")[0]);
+      }
+    } else {
+      touchedPaths.add(key.split(".")[0]);
+    }
+  }
+
+  const touchedFrozen = SALE_FROZEN_FIELDS.filter((f) => touchedPaths.has(f));
+  if (touchedFrozen.length === 0) return;
+
+  const nonDraftMatchCount = await this.model.countDocuments({
+    ...this.getQuery(),
+    status: { $ne: "DRAFT" },
+  });
+
+  if (nonDraftMatchCount > 0) {
+    throw new Error(
+      `Cannot modify ${touchedFrozen.join(", ")} via a query-level update - this would affect ` +
+      `at least one sale that is no longer DRAFT, where these fields are frozen.`
+    );
+  }
+}
+
+salesSchema.pre("updateOne", { document: false, query: true }, guardSaleQueryUpdate);
+salesSchema.pre("updateMany", guardSaleQueryUpdate);
+salesSchema.pre("findOneAndUpdate", guardSaleQueryUpdate);
+
+// ============================================================
+// HARD-DELETE PROTECTION
+// ============================================================
+// Soft-delete only (isDeleted/deletedAt) - no legitimate hard-delete
+// workflow exists at any stage of a Sale's lifecycle.
+const SALE_HARD_DELETE_ERROR = new Error(
+  "Sale records cannot be hard-deleted - use the soft-delete (isDeleted/deletedAt) workflow instead."
+);
+
+salesSchema.pre("deleteOne", { document: false, query: true }, function () {
+  throw SALE_HARD_DELETE_ERROR;
+});
+salesSchema.pre("deleteMany", function () {
+  throw SALE_HARD_DELETE_ERROR;
+});
+salesSchema.pre("findOneAndDelete", function () {
+  throw SALE_HARD_DELETE_ERROR;
+});
+salesSchema.pre("deleteOne", { document: true, query: false }, function () {
+  throw SALE_HARD_DELETE_ERROR;
+});
+
+// ============================================================
+// MODEL
+// ============================================================
+
+const Sale = mongoose.model("Sale", salesSchema);
+
+export default Sale;
+
+

@@ -1,0 +1,20 @@
+{
+    "sourceBranchId": "6a3c50cd835e3eec2ae93993",
+    "destinationBranchId": "6a33e55e17298409cd4cbba7",
+    "items": [
+        {
+            "productId": "6a2a4f0a2f67d8d700947692",
+            "productName": "IPHONE",
+            "productCode": "IPHONE",
+            "isSerialized": true,
+            "quantity": 1,
+            "serials": [
+                {
+                    "serialNumber": "9"
+                }
+            ]
+        }
+    ],
+    "reason": "STOCK_TRANSFER",
+    "notes": ""
+}

@@ -1,0 +1,479 @@
+{
+  "info": {
+    "_postman_id": "e5c3a9f2-7b1d-4e6a-9c2f-customermaster",
+    "name": "Customer Master (Dev)",
+    "description": "Covers only the Customer Master backend endpoints. Unlike Vendor (a global master), Customer is BRANCH-SCOPED - every customer belongs to exactly one active branch, and BRANCH_ADMIN/STAFF are always restricted to their own branch. Run folders top to bottom - later requests depend on variables set by earlier ones (tokens, ids). Does not touch Product/Purchase/Sale/Inventory/Batch/Serial/Transfer/Branch(write)/User endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "superAdminEmail", "value": "superadmin@test.com" },
+    { "key": "superAdminPassword", "value": "Test@12345" },
+    { "key": "branchAdminEmail", "value": "branchadmin@test.com" },
+    { "key": "branchAdminPassword", "value": "Test@12345" },
+    { "key": "staffEmail", "value": "staff@test.com" },
+    { "key": "staffPassword", "value": "Test@12345" },
+    { "key": "superAdminToken", "value": "" },
+    { "key": "branchAdminToken", "value": "" },
+    { "key": "staffToken", "value": "" },
+    { "key": "branchId", "value": "" },
+    { "key": "branchId2", "value": "" },
+    { "key": "inactiveBranchId", "value": "REPLACE_WITH_A_DEACTIVATED_BRANCH_ID" },
+    { "key": "customerId", "value": "" },
+    { "key": "customerId2", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Login SUPER_ADMIN",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) { pm.collectionVariables.set('superAdminToken', pm.response.json().data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Login BRANCH_ADMIN",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "if (pm.response.code === 200) { pm.collectionVariables.set('branchAdminToken', pm.response.json().data.token); }" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{branchAdminEmail}}\",\n  \"password\": \"{{branchAdminPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Login STAFF",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "if (pm.response.code === 200) { pm.collectionVariables.set('staffToken', pm.response.json().data.token); }" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Get Branch List (auto-sets branchId / branchId2)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "var branches = pm.response.json().data;",
+              "var list = Array.isArray(branches) ? branches : (branches.branches || []);",
+              "var active = list.filter(function (b) { return b.isActive; });",
+              "if (active[0]) { pm.collectionVariables.set('branchId', active[0]._id); }",
+              "if (active[1]) { pm.collectionVariables.set('branchId2', active[1]._id); }",
+              "pm.test('Found at least 2 active branches for cross-branch tests', function () { pm.expect(active.length).to.be.at.least(2); });"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/branch/list", "host": [ "{{baseUrl}}" ], "path": [ "branch", "list" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Create Customer",
+      "item": [
+        {
+          "name": "Create WITH GST (BRANCH_ADMIN, valid)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) {",
+              "    var data = pm.response.json().data;",
+              "    pm.collectionVariables.set('customerId', data._id);",
+              "    pm.test('GST is stored uppercased', function () { pm.expect(data.gstNumber).to.eql('27AAAPL1234C1ZV'); });",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ABC Medical Pvt Ltd\",\n  \"mobile\": \"9876543210\",\n  \"email\": \"abcmedical@example.com\",\n  \"gstNumber\": \"27AAAPL1234C1ZV\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Coimbatore\",\n  \"state\": \"Tamil Nadu\",\n  \"country\": \"India\",\n  \"pincode\": \"641001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Create WITHOUT GST (STAFF, valid)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) { pm.collectionVariables.set('customerId2', pm.response.json().data._id); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Walk-in Customer\",\n  \"mobile\": \"9876500001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Create as SUPER_ADMIN with explicit branchId2 (valid)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Assigned to branchId2', function () { pm.expect(pm.response.json().data.branchId._id).to.eql(pm.collectionVariables.get('branchId2')); });"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Super Admin Created Customer\",\n  \"branchId\": \"{{branchId2}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Missing name",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"mobile\": \"9876543210\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Missing branchId (SUPER_ADMIN)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Branch\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Non-existent branchId",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Branch\",\n  \"branchId\": \"000000000000000000000000\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Deactivated branchId",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deactivated Branch Customer\",\n  \"branchId\": \"{{inactiveBranchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad email format",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Email\",\n  \"email\": \"not-an-email\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad phone format",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Phone\",\n  \"mobile\": \"abc\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad GST format",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad GST\",\n  \"gstNumber\": \"INVALIDGST\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Duplicate mobile (same branch)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Duplicate Mobile\",\n  \"mobile\": \"9876543210\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        },
+        {
+          "name": "Branch injection ignored (BRANCH_ADMIN sends foreign branchId)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Own branch used, not the injected one', function () { pm.expect(pm.response.json().data.branchId._id).to.eql(pm.collectionVariables.get('branchId')); });"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Injection Test\",\n  \"branchId\": \"{{branchId2}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/create", "host": [ "{{baseUrl}}" ], "path": [ "customer", "create" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get Customer",
+      "item": [
+        {
+          "name": "Get by ID (valid)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/{{customerId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "{{customerId}}" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad ID format",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/not-a-valid-id", "host": [ "{{baseUrl}}" ], "path": [ "customer", "not-a-valid-id" ] }
+          }
+        },
+        {
+          "name": "Invalid: Well-formed but non-existent ID",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/000000000000000000000000", "host": [ "{{baseUrl}}" ], "path": [ "customer", "000000000000000000000000" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. List / Search / Filter",
+      "item": [
+        {
+          "name": "List (pagination)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/list?page=1&limit=10", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] }
+          }
+        },
+        {
+          "name": "Search",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/options?search=ABC", "host": [ "{{baseUrl}}" ], "path": [ "customer", "options" ], "query": [ { "key": "search", "value": "ABC" } ] }
+          }
+        },
+        {
+          "name": "Branch filter (SUPER_ADMIN)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/list?branchId={{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ], "query": [ { "key": "branchId", "value": "{{branchId}}" } ] }
+          }
+        },
+        {
+          "name": "Active customers",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/list?isActive=true", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ], "query": [ { "key": "isActive", "value": "true" } ] }
+          }
+        },
+        {
+          "name": "Inactive customers (run after 5.1 Deactivate)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/list?isActive=false", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ], "query": [ { "key": "isActive", "value": "false" } ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Update",
+      "item": [
+        {
+          "name": "Update fields",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"ABC Medical Pvt Ltd (Updated)\",\n  \"notes\": \"Preferred customer\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/update/{{customerId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "update", "{{customerId}}" ] }
+          }
+        },
+        {
+          "name": "Change branch (SUPER_ADMIN, valid)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Reassigned to branchId2', function () { pm.expect(pm.response.json().data.branchId._id).to.eql(pm.collectionVariables.get('branchId2')); });"
+            ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"branchId\": \"{{branchId2}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/update/{{customerId2}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "update", "{{customerId2}}" ] }
+          }
+        },
+        {
+          "name": "Forbidden: Change branch as BRANCH_ADMIN",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/update/{{customerId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "update", "{{customerId}}" ] }
+          }
+        },
+        {
+          "name": "Invalid: Deactivated branch on update",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"branchId\": \"{{inactiveBranchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/update/{{customerId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "update", "{{customerId}}" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Soft Delete / Reactivate",
+      "item": [
+        {
+          "name": "Deactivate",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json().data;",
+              "pm.test('isActive false, isDeleted true', function () { pm.expect(data.isActive).to.eql(false); pm.expect(data.isDeleted).to.eql(true); });"
+            ] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/delete/{{customerId}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "delete", "{{customerId}}" ] }
+          }
+        },
+        {
+          "name": "Reactivate",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json().data;",
+              "pm.test('isActive true, isDeleted false', function () { pm.expect(data.isActive).to.eql(true); pm.expect(data.isDeleted).to.eql(false); });"
+            ] } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/{{customerId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "customer", "{{customerId}}", "reactivate" ] }
+          }
+        },
+        {
+          "name": "Reactivate already-active customer (negative)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/{{customerId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "customer", "{{customerId}}", "reactivate" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Branch Isolation & Authorization",
+      "item": [
+        {
+          "name": "Cross-branch GET denied (STAFF, customerId2 now in branchId2)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/{{customerId2}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "{{customerId2}}" ] }
+          }
+        },
+        {
+          "name": "Cross-branch UPDATE denied (BRANCH_ADMIN)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"notes\": \"should not apply\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/customer/update/{{customerId2}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "update", "{{customerId2}}" ] }
+          }
+        },
+        {
+          "name": "SUPER_ADMIN unrestricted GET (any branch)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/customer/{{customerId2}}", "host": [ "{{baseUrl}}" ], "path": [ "customer", "{{customerId2}}" ] }
+          }
+        },
+        {
+          "name": "No token",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/customer/list", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ] }
+          }
+        },
+        {
+          "name": "Invalid/expired token",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer invalid.token.here" } ],
+            "url": { "raw": "{{baseUrl}}/customer/list", "host": [ "{{baseUrl}}" ], "path": [ "customer", "list" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

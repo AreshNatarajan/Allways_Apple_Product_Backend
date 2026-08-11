@@ -1,0 +1,8 @@
+get product by id 
+
+id   = 6a15837dcccd8b73475b3509
+
+
+delete product by id 
+
+id  =  6a15899e8ed4270c5b0c9673

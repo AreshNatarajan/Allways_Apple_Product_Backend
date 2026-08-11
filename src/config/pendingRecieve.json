@@ -1,0 +1,66 @@
+[
+    {
+        "purchaseId": "6a3549e5b34ec9923e41711c",
+        "purchaseNumber": "PO-1002",
+        "purchaseDate": "2026-06-19T00:00:00.000Z",
+        "vendor": {
+            "_id": "6a3387f08875e56573753b38",
+            "name": "JOESH",
+            "contactPerson": "JOVI",
+            "phone": "8343739353",
+            "email": "joesh@gmail.com"
+        },
+        "totalAmount": 150,
+        "pendingSerializedCount": 1,
+        "pendingNonSerializedCount": 0,
+        "totalPendingItems": 1
+    },
+    {
+        "purchaseId": "6a3689b453a1b37c822dc040",
+        "purchaseNumber": "PO-1003",
+        "purchaseDate": "2026-06-20T00:00:00.000Z",
+        "vendor": {
+            "_id": "6a3387f08875e56573753b38",
+            "name": "JOESH",
+            "contactPerson": "JOVI",
+            "phone": "8343739353",
+            "email": "joesh@gmail.com"
+        },
+        "totalAmount": 30,
+        "pendingSerializedCount": 1,
+        "pendingNonSerializedCount": 0,
+        "totalPendingItems": 1
+    },
+    {
+        "purchaseId": "6a37d730ffafb5f7a66dc1b1",
+        "purchaseNumber": "PO-1007",
+        "purchaseDate": "2026-06-21T00:00:00.000Z",
+        "vendor": {
+            "_id": "6a2b99ad5ecfd9d917b8219c",
+            "name": "Aresh",
+            "contactPerson": "Aresh",
+            "phone": "3433423424",
+            "email": "areshn18@gmail.com"
+        },
+        "totalAmount": 60,
+        "pendingSerializedCount": 1,
+        "pendingNonSerializedCount": 0,
+        "totalPendingItems": 1
+    },
+    {
+        "purchaseId": "6a383218fb4c50b40af50f62",
+        "purchaseNumber": "PO-1008",
+        "purchaseDate": "2026-06-21T00:00:00.000Z",
+        "vendor": {
+            "_id": "6a3387f08875e56573753b38",
+            "name": "JOESH",
+            "contactPerson": "JOVI",
+            "phone": "8343739353",
+            "email": "joesh@gmail.com"
+        },
+        "totalAmount": 30,
+        "pendingSerializedCount": 0,
+        "pendingNonSerializedCount": 1,
+        "totalPendingItems": 1
+    }
+]

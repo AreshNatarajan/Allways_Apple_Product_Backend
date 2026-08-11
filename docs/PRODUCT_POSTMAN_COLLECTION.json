@@ -1,0 +1,692 @@
+{
+  "info": {
+    "_postman_id": "c3a1f6d0-2b4e-4a9c-8f1a-productmaster",
+    "name": "Product Master (Dev)",
+    "description": "Covers only the Product Master backend endpoints. Run folders top to bottom - later requests depend on variables set by earlier ones (tokens, ids). Does not touch Purchase/Sale/Inventory/Batch/Serial/Transfer/Vendor/Customer/GST/Dashboard endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "superAdminEmail", "value": "superadmin@test.com" },
+    { "key": "superAdminPassword", "value": "Test@12345" },
+    { "key": "staffEmail", "value": "staff@test.com" },
+    { "key": "staffPassword", "value": "Test@12345" },
+    { "key": "superAdminToken", "value": "" },
+    { "key": "staffToken", "value": "" },
+    { "key": "nonSerialProductId", "value": "" },
+    { "key": "serialProductId", "value": "" },
+    { "key": "imageKey", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login SUPER_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('superAdminToken', pm.response.json().data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] },
+            "description": "Saves superAdminToken for use by every mutation request below. Use an existing SUPER_ADMIN or BRANCH_ADMIN account from your dev DB."
+          }
+        },
+        {
+          "name": "Login STAFF (for negative authorization tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('staffToken', pm.response.json().data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] },
+            "description": "Use an existing STAFF account from your dev DB - STAFF must be blocked from every Product mutation endpoint below."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Product Create",
+      "item": [
+        {
+          "name": "Create Non-Serialized Product (valid)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('nonSerialProductId', data._id);",
+                  "    pm.test('productCode present, modelNumbers empty', function () {",
+                  "        pm.expect(data.productCode).to.eql('PMDEV001');",
+                  "        pm.expect(data.modelNumbers).to.have.lengthOf(0);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Wireless Mouse\",\n  \"category\": \"ACCESSORY\",\n  \"isSerialized\": false,\n  \"productCode\": \"PMDEV001\",\n  \"hsnCode\": \"847160\",\n  \"description\": \"Dev test non-serialized product\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        },
+        {
+          "name": "Create Serialized Product (valid)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('serialProductId', data._id);",
+                  "    pm.test('modelNumbers present, hsnCode present, no productCode field', function () {",
+                  "        pm.expect(data.modelNumbers).to.eql(['DEV-MODEL-A1', 'DEV-MODEL-A2']);",
+                  "        pm.expect(data.hsnCode).to.eql('851712');",
+                  "        pm.expect(data).to.not.have.property('productCode');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Business Laptop\",\n  \"category\": \"LAPTOP\",\n  \"isSerialized\": true,\n  \"modelNumbers\": [\"DEV-MODEL-A1\", \"DEV-MODEL-A2\"],\n  \"hsnCode\": \"851712\",\n  \"description\": \"Dev test serialized product\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Serialized with productCode is silently stripped, not rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 - product still created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('productCode field is absent, not just null', function () {",
+                  "    pm.expect(pm.response.json().data).to.not.have.property('productCode');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Bad Combo Phone\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": true,\n  \"modelNumbers\": [\"DEV-PHONE-1\"],\n  \"productCode\": \"SHOULD-NOT-STICK\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] },
+            "description": "Product.productCode has a schema-level setter that returns undefined whenever isSerialized is true, so an invalid combination can never actually persist - this is existing, intentional behavior, not a bug."
+          }
+        },
+        {
+          "name": "Invalid: Non-serialized missing productCode",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Missing Code\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": false,\n  \"hsnCode\": \"847130\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Serialized missing modelNumbers",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Missing Models\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": true,\n  \"hsnCode\": \"1\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Missing hsnCode (required for both types)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Missing HSN\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": true,\n  \"modelNumbers\": [\"A\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] },
+            "description": "HSN is checked before the serialized/non-serialized branch, so this fails the same way for either product type."
+          }
+        },
+        {
+          "name": "Invalid: Duplicate Product Code",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Duplicate Code\",\n  \"category\": \"ACCESSORY\",\n  \"isSerialized\": false,\n  \"productCode\": \"PMDEV001\",\n  \"hsnCode\": \"847160\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] },
+            "description": "Run 'Create Non-Serialized Product (valid)' first so PMDEV001 already exists."
+          }
+        },
+        {
+          "name": "Unauthorized: No token",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"x\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": false,\n  \"productCode\": \"X1\",\n  \"hsnCode\": \"1\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot create",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"x\",\n  \"category\": \"MOBILE\",\n  \"isSerialized\": false,\n  \"productCode\": \"X1\",\n  \"hsnCode\": \"1\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/create", "host": [ "{{baseUrl}}" ], "path": [ "product", "create" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Product Read",
+      "item": [
+        {
+          "name": "Get Product by ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}" ] }
+          }
+        },
+        {
+          "name": "Get Product by invalid ID format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/not-a-valid-id", "host": [ "{{baseUrl}}" ], "path": [ "product", "not-a-valid-id" ] }
+          }
+        },
+        {
+          "name": "Get Product by well-formed but nonexistent ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/000000000000000000000000", "host": [ "{{baseUrl}}" ], "path": [ "product", "000000000000000000000000" ] }
+          }
+        },
+        {
+          "name": "Get Product List (paginated, default)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });", "pm.test('Has pagination block', function () { pm.expect(pm.response.json().data).to.have.property('pagination'); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?page=1&limit=10", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] }
+          }
+        },
+        {
+          "name": "Search by name/productCode/modelNumbers",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?search=Dev", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "search", "value": "Dev" } ] }
+          }
+        },
+        {
+          "name": "Filter by category",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?category=LAPTOP", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "category", "value": "LAPTOP" } ] }
+          }
+        },
+        {
+          "name": "Filter by isSerialized=true",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?isSerialized=true", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "isSerialized", "value": "true" } ] }
+          }
+        },
+        {
+          "name": "Filter by isSerialized=false",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?isSerialized=false", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "isSerialized", "value": "false" } ] }
+          }
+        },
+        {
+          "name": "Filter by isActive=false",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?isActive=false", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "isActive", "value": "false" } ] }
+          }
+        },
+        {
+          "name": "Product Search Options (typeahead)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/options?search=Dev&type=serialized", "host": [ "{{baseUrl}}" ], "path": [ "product", "options" ], "query": [ { "key": "search", "value": "Dev" }, { "key": "type", "value": "serialized" } ] }
+          }
+        },
+        {
+          "name": "Product Stats",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/stats", "host": [ "{{baseUrl}}" ], "path": [ "product", "stats" ] }
+          }
+        },
+        {
+          "name": "STAFF can read (200)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?limit=5", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "limit", "value": "5" } ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Product Update",
+      "item": [
+        {
+          "name": "Update common fields",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dev Wireless Mouse v2\",\n  \"hsnCode\": \"847199\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}" ] }
+          }
+        },
+        {
+          "name": "Update modelNumbers on serialized product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modelNumbers\": [\"DEV-MODEL-A1\", \"DEV-MODEL-A2\", \"DEV-MODEL-A3\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/product/{{serialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{serialProductId}}" ] }
+          }
+        },
+        {
+          "name": "Invalid: Invalid product ID format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"x\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/product/not-a-valid-id", "host": [ "{{baseUrl}}" ], "path": [ "product", "not-a-valid-id" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot update",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Product Deactivate / Reactivate",
+      "item": [
+        {
+          "name": "Deactivate (soft-delete) Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isDeleted true, isActive false', function () {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.isDeleted).to.eql(true);",
+                  "    pm.expect(data.isActive).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/{{serialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{serialProductId}}" ] }
+          }
+        },
+        {
+          "name": "Deleted product no longer appears in default list",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product?search=Dev Business Laptop", "host": [ "{{baseUrl}}" ], "path": [ "product" ], "query": [ { "key": "search", "value": "Dev Business Laptop" } ] }
+          }
+        },
+        {
+          "name": "Reactivate Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isDeleted false, isActive true', function () {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.isDeleted).to.eql(false);",
+                  "    pm.expect(data.isActive).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/{{serialProductId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{serialProductId}}", "reactivate" ] }
+          }
+        },
+        {
+          "name": "Reactivate already-active product (400)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/{{serialProductId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{serialProductId}}", "reactivate" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot deactivate",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Product Images",
+      "item": [
+        {
+          "name": "Upload multiple images",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    var images = pm.response.json().data.imageKeys;",
+                  "    pm.collectionVariables.set('imageKey', images[0]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "images", "type": "file", "src": [] },
+                { "key": "images", "type": "file", "src": [] }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] },
+            "description": "Select two local JPG/PNG/WEBP files under 5MB for the two 'images' fields before sending."
+          }
+        },
+        {
+          "name": "Invalid: wrong file type",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [ { "key": "images", "type": "file", "src": [] } ] },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] },
+            "description": "Select a .txt or .pdf file to confirm it is rejected with 400."
+          }
+        },
+        {
+          "name": "Invalid: no file uploaded",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [] },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] }
+          }
+        },
+        {
+          "name": "Remove one image by key",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"key\": \"{{imageKey}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] }
+          }
+        },
+        {
+          "name": "Remove same key again (404)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"key\": \"{{imageKey}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot upload images",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [] },
+            "url": { "raw": "{{baseUrl}}/product/{{nonSerialProductId}}/images", "host": [ "{{baseUrl}}" ], "path": [ "product", "{{nonSerialProductId}}", "images" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

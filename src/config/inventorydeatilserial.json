@@ -1,0 +1,505 @@
+{
+    "success": true,
+    "statusCode": 200,
+    "message": "Serialized inventory retrieved successfully",
+    "data": {
+        "inventory": [
+            {
+                "_id": "6a5db7991bf9ba7465c3fe20",
+                "serialNumber": "34343434",
+                "barcode": "34343434",
+                "status": "IN_TRANSIT",
+                "displayStatus": "IN_TRANSIT",
+                "displayStatusLabel": "Incoming",
+                "isInTransit": true,
+                "isIncoming": true,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": {
+                    "transferId": "6a5db85c1bf9ba7465c3fe21",
+                    "transferNumber": "TRF-20260720-0001",
+                    "sourceBranch": {
+                        "_id": "6a33e55e17298409cd4cbba7",
+                        "name": "MYD",
+                        "code": "MYD01"
+                    },
+                    "sourceBranchName": "MYD",
+                    "destinationBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destinationBranchName": "Chennai",
+                    "status": "DISPATCHED",
+                    "dispatchedAt": "2026-07-20T05:56:20.264Z",
+                    "receivedAt": null,
+                    "isReceived": false,
+                    "isRejected": false
+                },
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a5db7991bf9ba7465c3fe1f",
+                    "purchaseNumber": "PO-1028",
+                    "purchaseDate": "2026-07-20T00:00:00.000Z",
+                    "totalAmount": 300,
+                    "vendor": {
+                        "_id": "6a5895c9ab18808a99985a40",
+                        "name": "test1",
+                        "phone": "2378237823",
+                        "email": "test1@gmail.com",
+                        "address": "test",
+                        "gstNumber": "09AAACH7406R1ZZ"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "incoming_destination",
+                    "icon": "📦",
+                    "label": "From MYD",
+                    "currentBranch": null,
+                    "assignedBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "sourceBranch": {
+                        "_id": "6a33e55e17298409cd4cbba7",
+                        "name": "MYD",
+                        "code": "MYD01"
+                    },
+                    "destBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    }
+                },
+                "currentBranch": null,
+                "assignedBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "sale": null,
+                "purchasePrice": 300,
+                "sellingPrice": 400,
+                "receivedAt": "2026-07-20T05:52:25.406Z",
+                "soldAt": null,
+                "transferredAt": "2026-07-20T05:56:20.320Z",
+                "createdAt": "2026-07-20T05:52:25.410Z",
+                "updatedAt": "2026-07-20T05:56:20.321Z"
+            },
+            {
+                "_id": "6a5a0e310b92cb47ba951c62",
+                "serialNumber": "9090",
+                "barcode": "9090",
+                "status": "AVAILABLE",
+                "displayStatus": "AVAILABLE",
+                "displayStatusLabel": "AVAILABLE",
+                "isInTransit": false,
+                "isIncoming": false,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": null,
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a5a0e310b92cb47ba951c61",
+                    "purchaseNumber": "PO-1027",
+                    "purchaseDate": "2026-07-17T00:00:00.000Z",
+                    "totalAmount": 30,
+                    "vendor": {
+                        "_id": "6a5879e8ab18808a99985a3d",
+                        "name": "TEST",
+                        "phone": "3489348934",
+                        "email": "estest@gmail.com",
+                        "address": "test",
+                        "gstNumber": "29ABCDE1234F1Z5"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "current",
+                    "icon": "📍",
+                    "label": "Chennai",
+                    "currentBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "assignedBranch": null,
+                    "sourceBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destBranch": null
+                },
+                "currentBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "assignedBranch": null,
+                "sale": null,
+                "purchasePrice": 30,
+                "sellingPrice": 40,
+                "receivedAt": "2026-07-17T11:12:49.664Z",
+                "soldAt": null,
+                "transferredAt": null,
+                "createdAt": "2026-07-17T11:12:49.667Z",
+                "updatedAt": "2026-07-17T11:12:49.667Z"
+            },
+            {
+                "_id": "6a59dba23fd5bcd903d8588b",
+                "serialNumber": "11111",
+                "barcode": "11111",
+                "status": "AVAILABLE",
+                "displayStatus": "AVAILABLE",
+                "displayStatusLabel": "AVAILABLE",
+                "isInTransit": false,
+                "isIncoming": false,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": null,
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a59dba23fd5bcd903d8588a",
+                    "purchaseNumber": "PO-1026",
+                    "purchaseDate": "2026-07-17T00:00:00.000Z",
+                    "totalAmount": 23,
+                    "vendor": {
+                        "_id": "6a51d67b62ce54fde847df62",
+                        "name": "XYZ",
+                        "phone": "6732342323",
+                        "email": "xyz@gmail.com",
+                        "address": "test xyz",
+                        "gstNumber": "09AAACH7409R1ZZ"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "current",
+                    "icon": "📍",
+                    "label": "Chennai",
+                    "currentBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "assignedBranch": null,
+                    "sourceBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destBranch": null
+                },
+                "currentBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "assignedBranch": null,
+                "sale": null,
+                "purchasePrice": 23,
+                "sellingPrice": 23,
+                "receivedAt": "2026-07-17T07:37:06.815Z",
+                "soldAt": null,
+                "transferredAt": null,
+                "createdAt": "2026-07-17T07:37:06.820Z",
+                "updatedAt": "2026-07-17T07:37:06.820Z"
+            },
+            {
+                "_id": "6a5782590795a75db97160b0",
+                "serialNumber": "80827",
+                "barcode": "80827",
+                "status": "SOLD",
+                "displayStatus": "SOLD",
+                "displayStatusLabel": "SOLD",
+                "isInTransit": false,
+                "isIncoming": false,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": null,
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a5782590795a75db97160af",
+                    "purchaseNumber": "PO-1022",
+                    "purchaseDate": "2026-07-15T00:00:00.000Z",
+                    "totalAmount": 100,
+                    "vendor": {
+                        "_id": "6a47a07735724e5a33edee40",
+                        "name": "Aresh",
+                        "phone": "6383036186",
+                        "email": "areshn18@gmail.com",
+                        "address": "myd",
+                        "gstNumber": "27ABCDE1234F2Z5"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "current",
+                    "icon": "📍",
+                    "label": "Chennai",
+                    "currentBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "assignedBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "sourceBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destBranch": null
+                },
+                "currentBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "assignedBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "sale": {
+                    "_id": "6a5788f58cc6efea8b737fa3",
+                    "saleNumber": "INV-1003",
+                    "saleDate": "2026-07-15T00:00:00.000Z",
+                    "totalAmount": 190,
+                    "customer": {
+                        "_id": "6a54b9a3acebdae883c03aa0",
+                        "name": "HK",
+                        "mobile": "6723892378",
+                        "email": "hk@gmail.com"
+                    }
+                },
+                "purchasePrice": 100,
+                "sellingPrice": 200,
+                "receivedAt": "2026-07-15T12:52:14.439Z",
+                "soldAt": "2026-07-15T13:19:49.269Z",
+                "transferredAt": null,
+                "createdAt": "2026-07-15T12:51:37.533Z",
+                "updatedAt": "2026-07-15T13:19:49.270Z"
+            },
+            {
+                "_id": "6a4d50993e7f29bd6e4baf6d",
+                "serialNumber": "39",
+                "barcode": "39",
+                "status": "AVAILABLE",
+                "displayStatus": "AVAILABLE",
+                "displayStatusLabel": "AVAILABLE",
+                "isInTransit": false,
+                "isIncoming": false,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": null,
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a4d50993e7f29bd6e4baf6c",
+                    "purchaseNumber": "PO-1004",
+                    "purchaseDate": "2026-07-07T00:00:00.000Z",
+                    "totalAmount": 56,
+                    "vendor": {
+                        "_id": "6a47a07735724e5a33edee40",
+                        "name": "Aresh",
+                        "phone": "6383036186",
+                        "email": "areshn18@gmail.com",
+                        "address": "myd",
+                        "gstNumber": "27ABCDE1234F2Z5"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "current",
+                    "icon": "📍",
+                    "label": "Chennai",
+                    "currentBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "assignedBranch": null,
+                    "sourceBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destBranch": null
+                },
+                "currentBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "assignedBranch": null,
+                "sale": null,
+                "purchasePrice": 56,
+                "sellingPrice": 90,
+                "receivedAt": "2026-07-07T19:16:41.361Z",
+                "soldAt": null,
+                "transferredAt": null,
+                "createdAt": "2026-07-07T19:16:41.363Z",
+                "updatedAt": "2026-07-07T19:16:41.363Z"
+            },
+            {
+                "_id": "6a4d4f6d3e7f29bd6e4baf6b",
+                "serialNumber": "45",
+                "barcode": "45",
+                "status": "AVAILABLE",
+                "displayStatus": "AVAILABLE",
+                "displayStatusLabel": "AVAILABLE",
+                "isInTransit": false,
+                "isIncoming": false,
+                "isSourceTransit": false,
+                "isReceived": false,
+                "isRejected": false,
+                "transfer": null,
+                "product": {
+                    "_id": "6a47a05335724e5a33edee3f",
+                    "name": "Iphone 15 pro",
+                    "category": "MOBILE",
+                    "sellingPrice": 0,
+                    "purchasePrice": 0,
+                    "images": [
+                        "/uploads/products/product-1783078995515-10067.PNG"
+                    ]
+                },
+                "purchase": {
+                    "_id": "6a4d4f6d3e7f29bd6e4baf6a",
+                    "purchaseNumber": "PO-1003",
+                    "purchaseDate": "2026-07-07T00:00:00.000Z",
+                    "totalAmount": 40,
+                    "vendor": {
+                        "_id": "6a47a07735724e5a33edee40",
+                        "name": "Aresh",
+                        "phone": "6383036186",
+                        "email": "areshn18@gmail.com",
+                        "address": "myd",
+                        "gstNumber": "27ABCDE1234F2Z5"
+                    }
+                },
+                "branchDisplay": {
+                    "type": "current",
+                    "icon": "📍",
+                    "label": "Chennai",
+                    "currentBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "assignedBranch": null,
+                    "sourceBranch": {
+                        "_id": "6a3c50cd835e3eec2ae93993",
+                        "name": "Chennai",
+                        "code": "CHN001"
+                    },
+                    "destBranch": null
+                },
+                "currentBranch": {
+                    "_id": "6a3c50cd835e3eec2ae93993",
+                    "name": "Chennai",
+                    "code": "CHN001",
+                    "address": "Test",
+                    "phone": "6778896789",
+                    "isActive": true
+                },
+                "assignedBranch": null,
+                "sale": null,
+                "purchasePrice": 40,
+                "sellingPrice": 50,
+                "receivedAt": "2026-07-07T19:11:41.202Z",
+                "soldAt": null,
+                "transferredAt": "2026-07-13T12:00:14.450Z",
+                "createdAt": "2026-07-07T19:11:41.203Z",
+                "updatedAt": "2026-07-14T12:39:52.156Z"
+            }
+        ],
+        "pagination": {
+            "total": 6,
+            "page": 1,
+            "limit": 10,
+            "totalPages": 1
+        },
+        "stats": {
+            "total": 6,
+            "available": 4,
+            "inTransit": 0,
+            "incoming": 1,
+            "sold": 1,
+            "damaged": 0
+        },
+        "filters": {
+            "search": "",
+            "status": "ALL"
+        }
+    }
+}

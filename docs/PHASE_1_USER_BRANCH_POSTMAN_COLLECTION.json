@@ -1,0 +1,1385 @@
+{
+  "info": {
+    "_postman_id": "b7f2a6b0-1e3a-4d8a-9f2a-phase1userbranch",
+    "name": "Phase 1 - User, Branch & Auth (Dev)",
+    "description": "Covers only the User, Branch, and Auth endpoints touched in Phase 1/1.5. Run folders top to bottom - later requests depend on variables set by earlier ones (tokens, ids). No Purchase/Sale/Inventory/Batch/Transfer/GST/Product/Vendor/Customer endpoints are included.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "superAdminEmail", "value": "superadmin@test.com" },
+    { "key": "superAdminPassword", "value": "Test@12345" },
+    { "key": "branchAdminEmail", "value": "branchadmin@test.com" },
+    { "key": "branchAdminPassword", "value": "Test@12345" },
+    { "key": "staffEmail", "value": "staff@test.com" },
+    { "key": "staffPassword", "value": "Test@12345" },
+    { "key": "superAdminToken", "value": "" },
+    { "key": "branchAdminToken", "value": "" },
+    { "key": "staffToken", "value": "" },
+    { "key": "superAdminId", "value": "" },
+    { "key": "branchAdminId", "value": "" },
+    { "key": "staffId", "value": "" },
+    { "key": "branchId", "value": "" },
+    { "key": "branchId2", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth - Super Admin",
+      "item": [
+        {
+          "name": "Register Bootstrap SUPER_ADMIN (first time only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 (bootstrap created) or 403 (already exists - expected)', function () {",
+                  "    pm.expect([201, 403]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('superAdminToken', data.token);",
+                  "    pm.collectionVariables.set('superAdminId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Super Admin\",\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "auth", "register" ]
+            },
+            "description": "Only ever succeeds once, when zero SUPER_ADMIN accounts exist. Any role/branchId sent is ignored. If a SUPER_ADMIN already exists this returns 403 - that is expected, just run Login below instead."
+          }
+        },
+        {
+          "name": "Login SUPER_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('superAdminToken', data.token);",
+                  "    pm.collectionVariables.set('superAdminId', data.user.id);",
+                  "    pm.test('No password field in response', function () {",
+                  "        pm.expect(data.user).to.not.have.property('password');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "auth", "login" ]
+            },
+            "description": "Saves superAdminToken and superAdminId for use by every SUPER_ADMIN request below."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Branch Management (SUPER_ADMIN)",
+      "item": [
+        {
+          "name": "Create Test Branch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('branchId', pm.response.json().data.branch.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Chennai Branch\",\n  \"code\": \"TESTCHN01\",\n  \"email\": \"testbranch@test.com\",\n  \"phones\": [\"9000000001\"],\n  \"address\": {\n    \"city\": \"Chennai\",\n    \"state\": \"Tamil Nadu\",\n    \"country\": \"India\",\n    \"pincode\": \"600001\"\n  },\n  \"isActive\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/create-with-admin",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "create-with-admin" ]
+            },
+            "description": "Despite the route name, this only creates the Branch (it does not create a branch admin). Real schema fields: name, code, phones (array), nested address object. Response is wrapped in data.branch.{...} (Update Branch below returns fields flat at data.{...} instead - a pre-existing inconsistency, not something this collection changes). code must match ^[A-Z0-9]{2,10}$ (no hyphens) - this is now enforced on create too, not just update. Saves branchId."
+          }
+        },
+        {
+          "name": "Create Second Test Branch (for role-change test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('branchId2', pm.response.json().data.branch.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Bangalore Branch\",\n  \"code\": \"TESTBLR02\",\n  \"email\": \"testbranch2@test.com\",\n  \"phones\": [\"9000000004\"],\n  \"address\": {\n    \"city\": \"Bangalore\",\n    \"state\": \"Karnataka\",\n    \"country\": \"India\",\n    \"pincode\": \"560001\"\n  },\n  \"isActive\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/create-with-admin",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "create-with-admin" ]
+            },
+            "description": "A second branch with no existing BRANCH_ADMIN, needed to test promoting STAFF to BRANCH_ADMIN later (promoting into a branch that already has an admin is rejected with 409)."
+          }
+        },
+        {
+          "name": "Create Branch - Invalid Code Format (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Code Branch\",\n  \"code\": \"TEST-CHN-001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/branch/create-with-admin", "host": [ "{{baseUrl}}" ], "path": [ "branch", "create-with-admin" ] },
+            "description": "Hyphenated codes (the old dummy-data style) are now rejected on create, not just update. Expects 400 'Code must be 2-10 characters (uppercase letters and numbers only)'."
+          }
+        },
+        {
+          "name": "Create Branch - Invalid Email Format (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Email Branch\",\n  \"code\": \"BADEMAIL01\",\n  \"email\": \"not-an-email\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/branch/create-with-admin", "host": [ "{{baseUrl}}" ], "path": [ "branch", "create-with-admin" ] }
+          }
+        },
+        {
+          "name": "Create Branch - Invalid Phone Format (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Phone Branch\",\n  \"code\": \"BADPHONE1\",\n  \"phones\": [\"123\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/branch/create-with-admin", "host": [ "{{baseUrl}}" ], "path": [ "branch", "create-with-admin" ] }
+          }
+        },
+        {
+          "name": "Get Branch By Id",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/{{branchId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "{{branchId}}" ]
+            },
+            "description": "SUPER_ADMIN can fetch any branch, active or deactivated. BRANCH_ADMIN/STAFF can only fetch their own assigned branch (see Authorization Tests folder)."
+          }
+        },
+        {
+          "name": "Get All Branches (list, active only - default)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/list?search=test",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "list" ],
+              "query": [ { "key": "search", "value": "test" } ]
+            },
+            "description": "Any authenticated role can call this (not SUPER_ADMIN-restricted). Excludes deactivated branches by default."
+          }
+        },
+        {
+          "name": "Get All Branches (include inactive - SUPER_ADMIN only)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/list?search=test&includeInactive=true",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "list" ],
+              "query": [ { "key": "search", "value": "test" }, { "key": "includeInactive", "value": "true" } ]
+            },
+            "description": "New: includeInactive=true only takes effect for a SUPER_ADMIN caller - BRANCH_ADMIN/STAFF always get active-only regardless. This is the only way to discover a deactivated branch's id via listing."
+          }
+        },
+        {
+          "name": "Get Branches (paginated, active only - default)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/pagination?page=1&limit=10",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "pagination" ],
+              "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ]
+            }
+          }
+        },
+        {
+          "name": "Get Branches (paginated, include inactive)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/pagination?page=1&limit=10&includeInactive=true",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "pagination" ],
+              "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" }, { "key": "includeInactive", "value": "true" } ]
+            },
+            "description": "This route is already SUPER_ADMIN-only at the router level. Unlike /branch/list, each returned branch here does include the isActive field."
+          }
+        },
+        {
+          "name": "Get Branch Stats",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/branch/stats",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "stats" ]
+            },
+            "description": "Returns { totalBranches, activeBranches, inactiveBranches }."
+          }
+        },
+        {
+          "name": "Update Branch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Chennai Branch Updated\",\n  \"phones\": [\"9000000099\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/update/{{branchId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "update", "{{branchId}}" ]
+            },
+            "description": "Response fields are flat at data.{...} here, unlike Create Branch's data.branch.{...} wrapper."
+          }
+        },
+        {
+          "name": "Deactivate Branch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/update/{{branchId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "update", "{{branchId}}" ]
+            },
+            "description": "This is Branch's soft-delete/'Delete Branch' mechanism - there is no separate hard/soft-delete endpoint. See folder 7 for the full deactivation-blocks-assignment test flow."
+          }
+        },
+        {
+          "name": "Reactivate Branch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/update/{{branchId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "update", "{{branchId}}" ]
+            },
+            "description": "Run this right after Deactivate Branch so later requests in this collection are not affected by an inactive test branch."
+          }
+        },
+        {
+          "name": "Upload Branch Logo",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": null, "description": "Select a .jpg/.png/.webp file under 5MB before sending" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branch/{{branchId}}/logo",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "branch", "{{branchId}}", "logo" ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. User Management (SUPER_ADMIN)",
+      "item": [
+        {
+          "name": "Create BRANCH_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('branchAdminId', pm.response.json().data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Branch Admin\",\n  \"email\": \"{{branchAdminEmail}}\",\n  \"phone\": \"9000000002\",\n  \"password\": \"{{branchAdminPassword}}\",\n  \"branchId\": \"{{branchId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/create-branch-admin",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "create-branch-admin" ]
+            },
+            "description": "Any 'role' sent in the body is ignored - this endpoint always creates a BRANCH_ADMIN. branchId is now fully validated: required, valid ObjectId, must exist, must be active."
+          }
+        },
+        {
+          "name": "Create BRANCH_ADMIN - Non-existent Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ghost Admin\",\n  \"email\": \"ghostadmin@test.com\",\n  \"password\": \"Test@12345\",\n  \"branchId\": \"000000000000000000000000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/user/create-branch-admin", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-branch-admin" ] },
+            "description": "Well-formed ObjectId that does not correspond to any real branch. Expects 404 'Branch not found' - proves a valid ObjectId shape alone is not enough."
+          }
+        },
+        {
+          "name": "Create STAFF - Invalid Branch ID Format (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ghost Staff\",\n  \"email\": \"ghoststaff@test.com\",\n  \"password\": \"Test@12345\",\n  \"branchId\": \"not-a-valid-id\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/user/create-staff", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-staff" ] },
+            "description": "Expects 400 'Invalid branch ID'. This validation did not exist at all before this round for create-staff."
+          }
+        },
+        {
+          "name": "Create STAFF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('staffId', pm.response.json().data.staff._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Staff\",\n  \"email\": \"{{staffEmail}}\",\n  \"phone\": \"9000000003\",\n  \"password\": \"{{staffPassword}}\",\n  \"branchId\": \"{{branchId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/create-staff",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "create-staff" ]
+            }
+          }
+        },
+        {
+          "name": "Get User By Id (new)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            },
+            "description": "Single-user read, added this round - previously there was no way to fetch one user by id at all (only the full list)."
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/user/list?page=1&limit=10&search=test",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "list" ],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "search", "value": "test" },
+                { "key": "role", "value": "STAFF", "disabled": true },
+                { "key": "branchId", "value": "{{branchId}}", "disabled": true },
+                { "key": "isActive", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "isActive query param is new this round - enable it (true/false) to test 'get active users' vs 'get deactivated users' explicitly. Omitted (default) returns all non-deleted users regardless of active status."
+          }
+        },
+        {
+          "name": "Update BRANCH_ADMIN (role-specific endpoint)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Branch Admin Updated\",\n  \"phone\": \"9000000012\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/update-branch-admin/{{branchAdminId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "update-branch-admin", "{{branchAdminId}}" ]
+            }
+          }
+        },
+        {
+          "name": "Update STAFF (role-specific endpoint)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Staff Updated\",\n  \"phone\": \"9000000013\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/update-staff/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "update-staff", "{{staffId}}" ]
+            },
+            "description": "If branchId is included here and differs from the current one, it is now validated (exists + active) just like create - see folder 7."
+          }
+        },
+        {
+          "name": "Reset BRANCH_ADMIN Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"NewBranchAdmin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/update-branch-admin/{{branchAdminId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "update-branch-admin", "{{branchAdminId}}" ]
+            },
+            "description": "Confirm by re-running '4. Auth - Branch Admin & Staff Login' > Login BRANCH_ADMIN with this new password."
+          }
+        },
+        {
+          "name": "Reset STAFF Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"NewStaff@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/update-staff/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "update-staff", "{{staffId}}" ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate STAFF (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            },
+            "description": "This is User's soft-delete/'Delete User' mechanism - there is no separate hard/soft-delete endpoint. A deactivated user gets 403 'User account is inactive' on next login (confirmed live). This endpoint blocks deactivating the LAST remaining active SUPER_ADMIN - only test on STAFF/BRANCH_ADMIN."
+          }
+        },
+        {
+          "name": "Reactivate STAFF (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            }
+          }
+        },
+        {
+          "name": "Change STAFF Role to BRANCH_ADMIN (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"BRANCH_ADMIN\",\n  \"branchId\": \"{{branchId2}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            },
+            "description": "Uses branchId2 (no existing admin) - promoting into a branch that already has a BRANCH_ADMIN is rejected with 409. Promoting into a deactivated or non-existent branch is rejected too - see folder 7."
+          }
+        },
+        {
+          "name": "Revert STAFF Role back to STAFF (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"STAFF\",\n  \"branchId\": \"{{branchId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            },
+            "description": "Run right after the role-change test so later requests are not affected."
+          }
+        },
+        {
+          "name": "Reassign STAFF Branch (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"{{branchId2}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            }
+          }
+        },
+        {
+          "name": "Reassign STAFF Branch back (generic update)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"{{branchId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}" ]
+            }
+          }
+        },
+        {
+          "name": "Upload Profile Image (another user - STAFF)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": null, "description": "Select a .jpg/.png/.webp file under 5MB before sending" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{staffId}}/profile-image",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{staffId}}", "profile-image" ]
+            },
+            "description": "SUPER_ADMIN manages any user's profile image, not just their own."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Auth - Branch Admin & Staff Login",
+      "item": [
+        {
+          "name": "Login BRANCH_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('branchAdminToken', data.token);",
+                  "    pm.collectionVariables.set('branchAdminId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{branchAdminEmail}}\",\n  \"password\": \"{{branchAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "auth", "login" ]
+            },
+            "description": "If you ran 'Reset BRANCH_ADMIN Password' earlier, update the branchAdminPassword variable first."
+          }
+        },
+        {
+          "name": "Login STAFF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('staffToken', data.token);",
+                  "    pm.collectionVariables.set('staffId', data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "auth", "login" ]
+            },
+            "description": "If you ran 'Reset STAFF Password' earlier, update the staffPassword variable first."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. SUPER_ADMIN Own Profile",
+      "item": [
+        {
+          "name": "Get Own Profile (new)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/user/{{superAdminId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{superAdminId}}" ]
+            },
+            "description": "Same GET /user/:id endpoint as 'Get User By Id', just targeting the SUPER_ADMIN's own id - not a separate 'me' route."
+          }
+        },
+        {
+          "name": "Update Own Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Super Admin Updated\",\n  \"phone\": \"9000000000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{superAdminId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{superAdminId}}" ]
+            },
+            "description": "Same generic PUT /user/:id endpoint, targeting the SUPER_ADMIN's own id."
+          }
+        },
+        {
+          "name": "Change Own Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"NewTest@12345\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{superAdminId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{superAdminId}}" ]
+            },
+            "description": "Update the superAdminPassword variable afterward and re-run Login to confirm the new password works."
+          }
+        },
+        {
+          "name": "Upload Own Profile Image",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": null, "description": "Select a .jpg/.png/.webp file under 5MB before sending" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/{{superAdminId}}/profile-image",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "{{superAdminId}}", "profile-image" ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Login-Logout History",
+      "item": [
+        {
+          "name": "List Login History (all)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login-history?page=1&limit=20",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "login-history" ],
+              "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "20" } ]
+            }
+          }
+        },
+        {
+          "name": "List Login History (filtered by STAFF user)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login-history?userId={{staffId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "user", "login-history" ],
+              "query": [ { "key": "userId", "value": "{{staffId}}" } ]
+            }
+          }
+        },
+        {
+          "name": "Logout STAFF session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "auth", "logout" ]
+            },
+            "description": "Closes only the session tied to staffToken. Run 'List Login History (filtered by STAFF user)' again afterward - that session's logoutAt should now be set."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Branch Validation & Deactivation (new)",
+      "item": [
+        {
+          "name": "Step 1 - Deactivate Branch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": false\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/update/{{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "update", "{{branchId}}" ] },
+            "description": "Deactivates the primary test branch so the following requests can prove it can no longer receive new users."
+          }
+        },
+        {
+          "name": "Step 2 - Create STAFF against deactivated branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deactivated Branch Staff\",\n  \"email\": \"deactivatedbranchstaff@test.com\",\n  \"password\": \"Test@12345\",\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/create-staff", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-staff" ] },
+            "description": "Expects 400 'This branch is deactivated and cannot be assigned'."
+          }
+        },
+        {
+          "name": "Step 3 - Create BRANCH_ADMIN against deactivated branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deactivated Branch Admin\",\n  \"email\": \"deactivatedbranchadmin@test.com\",\n  \"password\": \"Test@12345\",\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/create-branch-admin", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-branch-admin" ] }
+          }
+        },
+        {
+          "name": "Step 4 - Reassign STAFF into deactivated branch via role-specific endpoint (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/update-staff/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "update-staff", "{{staffId}}" ] },
+            "description": "Only actually exercises the check if staffId's CURRENT branch differs from branchId (run 'Reassign STAFF Branch' in folder 3 first so staff is on branchId2, then run this)."
+          }
+        },
+        {
+          "name": "Step 5 - Reassign STAFF into deactivated branch via generic endpoint (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "Step 6 - Promote STAFF to BRANCH_ADMIN of deactivated branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"BRANCH_ADMIN\",\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "Step 7 - Reactivate Branch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/update/{{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "update", "{{branchId}}" ] },
+            "description": "Run this so the rest of the collection isn't affected by a deactivated primary test branch. All Step 2-6 requests should succeed if re-run now."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Authorization Tests (Negative)",
+      "item": [
+        {
+          "name": "BRANCH_ADMIN - Get User By Id (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Edit Own Profile (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{branchAdminId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{branchAdminId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Change Own Password (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Hacked123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{branchAdminId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{branchAdminId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Upload Own Profile Image (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [ { "key": "image", "type": "file", "src": null } ] },
+            "url": { "raw": "{{baseUrl}}/user/{{branchAdminId}}/profile-image", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{branchAdminId}}", "profile-image" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Create Staff (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\",\n  \"email\": \"hacked1@test.com\",\n  \"password\": \"Hacked123\",\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/create-staff", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-staff" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Reset Another User's Password (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Hacked123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Change Another User's Role (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"SUPER_ADMIN\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - List Users (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - View Login History (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/login-history", "host": [ "{{baseUrl}}" ], "path": [ "user", "login-history" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Create Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked Branch\",\n  \"code\": \"HACK01\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/create-with-admin", "host": [ "{{baseUrl}}" ], "path": [ "branch", "create-with-admin" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Update Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/update/{{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "update", "{{branchId}}" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Upload Branch Logo (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [ { "key": "image", "type": "file", "src": null } ] },
+            "url": { "raw": "{{baseUrl}}/branch/{{branchId}}/logo", "host": [ "{{baseUrl}}" ], "path": [ "branch", "{{branchId}}", "logo" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN - Get Branches Paginated (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/branch/pagination", "host": [ "{{baseUrl}}" ], "path": [ "branch", "pagination" ] }
+          }
+        },
+        {
+          "name": "STAFF - Get User By Id (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "STAFF - Edit Own Profile (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "STAFF - Change Own Password (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Hacked123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}" ] }
+          }
+        },
+        {
+          "name": "STAFF - Upload Own Profile Image (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "body": { "mode": "formdata", "formdata": [ { "key": "image", "type": "file", "src": null } ] },
+            "url": { "raw": "{{baseUrl}}/user/{{staffId}}/profile-image", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{staffId}}", "profile-image" ] }
+          }
+        },
+        {
+          "name": "STAFF - Create Staff (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\",\n  \"email\": \"hacked2@test.com\",\n  \"password\": \"Hacked123\",\n  \"branchId\": \"{{branchId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/create-staff", "host": [ "{{baseUrl}}" ], "path": [ "user", "create-staff" ] }
+          }
+        },
+        {
+          "name": "STAFF - Reset Another User's Password (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Hacked123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/user/{{branchAdminId}}", "host": [ "{{baseUrl}}" ], "path": [ "user", "{{branchAdminId}}" ] }
+          }
+        },
+        {
+          "name": "STAFF - List Users (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          }
+        },
+        {
+          "name": "STAFF - Create Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked Branch\",\n  \"code\": \"HACK02\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/create-with-admin", "host": [ "{{baseUrl}}" ], "path": [ "branch", "create-with-admin" ] }
+          }
+        },
+        {
+          "name": "STAFF - Update Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/branch/update/{{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "update", "{{branchId}}" ] }
+          }
+        },
+        {
+          "name": "STAFF - Get Foreign Branch (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/branch/{{branchId2}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "{{branchId2}}" ] },
+            "description": "STAFF is assigned to branchId, not branchId2 - must be denied."
+          }
+        },
+        {
+          "name": "STAFF - Get Own Branch (Allow - control case)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/branch/{{branchId}}", "host": [ "{{baseUrl}}" ], "path": [ "branch", "{{branchId}}" ] },
+            "description": "Control case proving the 403 above is genuinely about branch ownership, not a broken endpoint."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. JWT Security Tests",
+      "item": [
+        {
+          "name": "No Token (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          }
+        },
+        {
+          "name": "Invalid Token (Deny)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer this.is.not.a.valid.jwt" } ],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          }
+        },
+        {
+          "name": "Expired Token (Deny) - manual/optional",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer PASTE_AN_EXPIRED_TOKEN_HERE" } ],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          },
+          "description": "Postman cannot forge a validly-signed expired token without the server's JWT_SECRET. Paste one generated with server access if you want to run this; expect 401 either way (also 401 as-is with the placeholder, since it's not a valid signature)."
+        },
+        {
+          "name": "Valid SUPER_ADMIN Token (Allow)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/user/list", "host": [ "{{baseUrl}}" ], "path": [ "user", "list" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

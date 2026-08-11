@@ -1,0 +1,599 @@
+{
+  "info": {
+    "_postman_id": "d4b2e7a1-3c5f-4a8e-9d1b-vendormaster",
+    "name": "Vendor Master (Dev)",
+    "description": "Covers only the Vendor Master backend endpoints. Vendor is a GLOBAL master - it never belongs to a branchId, and any branch/role may read it per the roles below. Run folders top to bottom - later requests depend on variables set by earlier ones (tokens, ids). Does not touch Product/Purchase/Sale/Inventory/Batch/Serial/Transfer/Branch/User endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "superAdminEmail", "value": "superadmin@test.com" },
+    { "key": "superAdminPassword", "value": "Test@12345" },
+    { "key": "branchAdminEmail", "value": "branchadmin@test.com" },
+    { "key": "branchAdminPassword", "value": "Test@12345" },
+    { "key": "staffEmail", "value": "staff@test.com" },
+    { "key": "staffPassword", "value": "Test@12345" },
+    { "key": "superAdminToken", "value": "" },
+    { "key": "branchAdminToken", "value": "" },
+    { "key": "staffToken", "value": "" },
+    { "key": "vendorId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login SUPER_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set('superAdminToken', pm.response.json().data.token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Login BRANCH_ADMIN (for negative authorization tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "if (pm.response.code === 200) { pm.collectionVariables.set('branchAdminToken', pm.response.json().data.token); }" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{branchAdminEmail}}\",\n  \"password\": \"{{branchAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Login STAFF (for negative authorization tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [ "if (pm.response.code === 200) { pm.collectionVariables.set('staffToken', pm.response.json().data.token); }" ] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Vendor Create",
+      "item": [
+        {
+          "name": "Create Vendor (valid, full fields)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.collectionVariables.set('vendorId', data._id);",
+                  "    pm.test('No branchId on the vendor (global master)', function () {",
+                  "        pm.expect(data).to.not.have.property('branchId');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ABC Medical Supplies\",\n  \"companyName\": \"ABC Medical Supplies Pvt Ltd\",\n  \"email\": \"vendor.test@example.com\",\n  \"phone\": \"9876543210\",\n  \"alternatePhone\": \"9876500000\",\n  \"address\": \"123 Main Road\",\n  \"city\": \"Chennai\",\n  \"state\": \"Tamil Nadu\",\n  \"country\": \"India\",\n  \"pincode\": \"600001\",\n  \"vendorCode\": \"VEND001\",\n  \"gstNumber\": \"33ABCDE1234F1Z5\",\n  \"panNumber\": \"ABCDE1234F\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Missing name",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"9876543210\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad email format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Email Vendor\",\n  \"email\": \"not-an-email\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad phone format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Phone Vendor\",\n  \"phone\": \"abc123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad GST format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad GST Vendor\",\n  \"gstNumber\": \"INVALIDGST\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Bad PAN format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad PAN Vendor\",\n  \"panNumber\": \"INVALIDPAN\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Duplicate name",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"ABC Medical Supplies\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] },
+            "description": "Run 'Create Vendor (valid, full fields)' first so this name already exists."
+          }
+        },
+        {
+          "name": "Invalid: Duplicate GST",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Different Name\",\n  \"gstNumber\": \"33ABCDE1234F1Z5\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Duplicate email",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Different Name 2\",\n  \"email\": \"vendor.test@example.com\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Invalid: Duplicate vendorCode",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 409', function () { pm.response.to.have.status(409); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Different Name 3\",\n  \"vendorCode\": \"VEND001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Attempt to provide branchId (silently ignored, not an error)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 - vendor still created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('branchId is not on the created vendor', function () {",
+                  "    pm.expect(pm.response.json().data).to.not.have.property('branchId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Vendor Branch Attempt\",\n  \"branchId\": \"64f000000000000000000000\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] },
+            "description": "Vendor is a global master and the schema has no branchId field at all - any branchId sent by the client is simply never read or stored."
+          }
+        },
+        {
+          "name": "Unauthorized: No token",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 401', function () { pm.response.to.have.status(401); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"x\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        },
+        {
+          "name": "Forbidden: BRANCH_ADMIN cannot create",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"x\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] },
+            "description": "Vendor management is SUPER_ADMIN only - unlike Product, BRANCH_ADMIN is a read-only consumer here too."
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot create",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"x\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/create", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "create" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Vendor Read",
+      "item": [
+        {
+          "name": "Get Vendor by ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "{{vendorId}}" ] }
+          }
+        },
+        {
+          "name": "Get Vendor by invalid ID format",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/not-a-valid-id", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "not-a-valid-id" ] }
+          }
+        },
+        {
+          "name": "Get Vendor by well-formed but nonexistent ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 404', function () { pm.response.to.have.status(404); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/000000000000000000000000", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "000000000000000000000000" ] }
+          }
+        },
+        {
+          "name": "List Vendors (paginated, default active only)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });", "pm.test('Has pagination block', function () { pm.expect(pm.response.json().data).to.have.property('pagination'); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?page=1&limit=10", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] }
+          }
+        },
+        {
+          "name": "Search vendors",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?search=ABC", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "search", "value": "ABC" } ] }
+          }
+        },
+        {
+          "name": "Filter: Active only",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?isActive=true", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "isActive", "value": "true" } ] }
+          }
+        },
+        {
+          "name": "Filter: Inactive only",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?isActive=false", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "isActive", "value": "false" } ] }
+          }
+        },
+        {
+          "name": "Filter: Include inactive (all)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?includeInactive=true", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "includeInactive", "value": "true" } ] }
+          }
+        },
+        {
+          "name": "Vendor options (dropdown/typeahead)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/options?search=ABC", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "options" ], "query": [ { "key": "search", "value": "ABC" } ] }
+          }
+        },
+        {
+          "name": "Vendor stats",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/stats", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "stats" ] }
+          }
+        },
+        {
+          "name": "BRANCH_ADMIN can read (200)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{branchAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ] }
+          }
+        },
+        {
+          "name": "STAFF can read (200)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Vendor Update",
+      "item": [
+        {
+          "name": "Update common fields",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"city\": \"Coimbatore\",\n  \"notes\": \"Preferred supplier\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/update/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "update", "{{vendorId}}" ] }
+          }
+        },
+        {
+          "name": "Invalid: malformed ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"city\": \"x\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/update/not-a-valid-id", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "update", "not-a-valid-id" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot update",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"hacked\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/vendor/update/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "update", "{{vendorId}}" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Vendor Deactivate / Reactivate",
+      "item": [
+        {
+          "name": "Deactivate (soft-delete) Vendor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isDeleted true, isActive false', function () {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.isDeleted).to.eql(true);",
+                  "    pm.expect(data.isActive).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/delete/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "delete", "{{vendorId}}" ] }
+          }
+        },
+        {
+          "name": "Deactivated vendor still viewable by ID",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 200 - still viewable', function () { pm.response.to.have.status(200); });" ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "{{vendorId}}" ] }
+          }
+        },
+        {
+          "name": "Deactivated vendor excluded from default list",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/list?search=ABC Medical", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "list" ], "query": [ { "key": "search", "value": "ABC Medical" } ] }
+          }
+        },
+        {
+          "name": "Reactivate Vendor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isDeleted false, isActive true', function () {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.isDeleted).to.eql(false);",
+                  "    pm.expect(data.isActive).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/{{vendorId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "{{vendorId}}", "reactivate" ] }
+          }
+        },
+        {
+          "name": "Reactivate already-active vendor (400)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 400', function () { pm.response.to.have.status(400); });" ] } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "Bearer {{superAdminToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/{{vendorId}}/reactivate", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "{{vendorId}}", "reactivate" ] }
+          }
+        },
+        {
+          "name": "Forbidden: STAFF cannot deactivate/reactivate",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Status is 403', function () { pm.response.to.have.status(403); });" ] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{staffToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/vendor/delete/{{vendorId}}", "host": [ "{{baseUrl}}" ], "path": [ "vendor", "delete", "{{vendorId}}" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

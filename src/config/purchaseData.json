@@ -1,0 +1,608 @@
+{
+    "purchases": [
+        {
+            "_id": "6a3834bbfb4c50b40af50f65",
+            "purchaseNumber": "PO-1009",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "32323",
+            "supplierInvoiceDate": "2026-06-21T00:00:00.000Z",
+            "purchaseDate": "2026-06-21T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 50,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 50,
+                    "paymentDate": "2026-06-21T00:00:00.000Z",
+                    "paymentMethod": "CASH",
+                    "notes": "",
+                    "attachment": null
+                }
+            ],
+            "invoiceFile": null,
+            "signatureFile": null,
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a3386b48875e56573753b37",
+                        "name": "IPHONE 15 PRO MAX",
+                        "category": "LAPTOP",
+                        "isSerialized": false
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [],
+                    "purchasePrice": 50,
+                    "sellingPrice": 50,
+                    "totalPrice": 50
+                }
+            ],
+            "totalAmount": 50,
+            "itemCount": 1,
+            "notes": "",
+            "createdBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-21T19:00:11.482Z",
+            "updatedAt": "2026-06-21T19:00:11.482Z",
+            "daysSince": 1,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a37d730ffafb5f7a66dc1b1",
+            "purchaseNumber": "PO-1007",
+            "vendorId": {
+                "_id": "6a2b99ad5ecfd9d917b8219c",
+                "name": "Aresh",
+                "phone": "3433423424",
+                "email": "areshn18@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "test",
+            "supplierInvoiceDate": "2026-06-21T00:00:00.000Z",
+            "purchaseDate": "2026-06-21T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 60,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 60,
+                    "paymentDate": "2026-06-21T00:00:00.000Z",
+                    "paymentMethod": "CASH",
+                    "notes": "",
+                    "attachment": null
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1782044432710-38388.pdf",
+            "signatureFile": "/uploads/signatures/signature-1782044438466-96513.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "5656"
+                        }
+                    ],
+                    "purchasePrice": 60,
+                    "sellingPrice": 80,
+                    "totalPrice": 60
+                }
+            ],
+            "totalAmount": 60,
+            "itemCount": 1,
+            "notes": "Test",
+            "createdBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-21T12:21:04.616Z",
+            "updatedAt": "2026-06-21T12:21:04.616Z",
+            "daysSince": 1,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a37d6beffafb5f7a66dc1af",
+            "purchaseNumber": "PO-1006",
+            "vendorId": {
+                "_id": "6a2b99ad5ecfd9d917b8219c",
+                "name": "Aresh",
+                "phone": "3433423424",
+                "email": "areshn18@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "2222",
+            "supplierInvoiceDate": "2026-06-21T00:00:00.000Z",
+            "purchaseDate": "2026-06-21T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 30,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 30,
+                    "paymentDate": "2026-06-21T00:00:00.000Z",
+                    "paymentMethod": "CASH",
+                    "notes": "test",
+                    "attachment": null
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1782044312061-80575.pdf",
+            "signatureFile": "/uploads/signatures/signature-1782044318750-30367.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a3386b48875e56573753b37",
+                        "name": "IPHONE 15 PRO MAX",
+                        "category": "LAPTOP",
+                        "isSerialized": false
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [],
+                    "purchasePrice": 30,
+                    "sellingPrice": 50,
+                    "totalPrice": 30
+                }
+            ],
+            "totalAmount": 30,
+            "itemCount": 1,
+            "notes": "testte",
+            "createdBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-21T12:19:10.217Z",
+            "updatedAt": "2026-06-21T12:19:10.217Z",
+            "daysSince": 1,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a37c804ffafb5f7a66dc1ad",
+            "purchaseNumber": "PO-1005",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "1212",
+            "supplierInvoiceDate": "2026-06-21T00:00:00.000Z",
+            "purchaseDate": "2026-06-21T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 202,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 202,
+                    "paymentDate": "2026-06-21T00:00:00.000Z",
+                    "paymentMethod": "CARD",
+                    "notes": "test",
+                    "attachment": "/uploads/payment-evidences/payment-1782040574206-53609.jpeg"
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1782040525905-19616.pdf",
+            "signatureFile": "/uploads/signatures/signature-1782040531760-38279.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "777"
+                        }
+                    ],
+                    "purchasePrice": 202,
+                    "sellingPrice": 400,
+                    "totalPrice": 202
+                }
+            ],
+            "totalAmount": 202,
+            "itemCount": 1,
+            "notes": "Test",
+            "createdBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33d9d1447654bd338187ca",
+                "name": "Super Admin",
+                "email": "superadmin@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-21T11:16:20.523Z",
+            "updatedAt": "2026-06-21T11:16:20.523Z",
+            "daysSince": 1,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a368cc018602a396837c9af",
+            "purchaseNumber": "PO-1004",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "92929292",
+            "supplierInvoiceDate": "2026-06-20T00:00:00.000Z",
+            "purchaseDate": "2026-06-20T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 20,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 20,
+                    "paymentDate": "2026-06-20T00:00:00.000Z",
+                    "paymentMethod": "CARD",
+                    "notes": "test own branch 1",
+                    "attachment": "/uploads/payment-evidences/payment-1781959867942-24494.jpeg"
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1781959822196-9375.pdf",
+            "signatureFile": "/uploads/signatures/signature-1781959828945-12233.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "00000"
+                        }
+                    ],
+                    "purchasePrice": 20,
+                    "sellingPrice": 30,
+                    "totalPrice": 20
+                }
+            ],
+            "totalAmount": 20,
+            "itemCount": 1,
+            "notes": "test",
+            "createdBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-20T12:51:12.505Z",
+            "updatedAt": "2026-06-20T12:51:12.505Z",
+            "daysSince": 2,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a3689b453a1b37c822dc040",
+            "purchaseNumber": "PO-1003",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "2323",
+            "supplierInvoiceDate": "2026-06-20T00:00:00.000Z",
+            "purchaseDate": "2026-06-20T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 30,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 30,
+                    "paymentDate": "2026-06-20T00:00:00.000Z",
+                    "paymentMethod": "CARD",
+                    "notes": "Test oqn branc",
+                    "attachment": "/uploads/payment-evidences/payment-1781959057733-32949.jpeg"
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1781959010656-71011.pdf",
+            "signatureFile": "/uploads/signatures/signature-1781959017898-35360.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "0000"
+                        }
+                    ],
+                    "purchasePrice": 30,
+                    "sellingPrice": 50,
+                    "totalPrice": 30
+                }
+            ],
+            "totalAmount": 30,
+            "itemCount": 1,
+            "notes": "teste",
+            "createdBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-20T12:38:12.341Z",
+            "updatedAt": "2026-06-20T12:38:12.341Z",
+            "daysSince": 2,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a3549e5b34ec9923e41711c",
+            "purchaseNumber": "PO-1002",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "2323",
+            "supplierInvoiceDate": "2026-06-19T00:00:00.000Z",
+            "purchaseDate": "2026-06-19T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 150,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 70,
+                    "paymentDate": "2026-06-19T00:00:00.000Z",
+                    "paymentMethod": "EMI",
+                    "notes": "test",
+                    "attachment": "/uploads/payment-evidences/payment-1781877216759-3180.jpeg"
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1781877149494-60566.pdf",
+            "signatureFile": "/uploads/signatures/signature-1781877155107-55700.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "1111111"
+                        }
+                    ],
+                    "purchasePrice": 30,
+                    "sellingPrice": 50,
+                    "totalPrice": 30
+                },
+                {
+                    "productId": {
+                        "_id": "6a2a95f0d4ac14e92e03c125",
+                        "name": "IPHONE CHARGER",
+                        "category": "ACCESSORY",
+                        "isSerialized": false
+                    },
+                    "quantity": 3,
+                    "serialNumbers": [],
+                    "purchasePrice": 40,
+                    "sellingPrice": 80,
+                    "totalPrice": 120
+                }
+            ],
+            "totalAmount": 150,
+            "itemCount": 2,
+            "notes": "",
+            "createdBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-19T13:53:41.497Z",
+            "updatedAt": "2026-06-19T13:53:41.497Z",
+            "daysSince": 3,
+            "isOverdue": false
+        },
+        {
+            "_id": "6a354919b34ec9923e417119",
+            "purchaseNumber": "PO-1001",
+            "vendorId": {
+                "_id": "6a3387f08875e56573753b38",
+                "name": "JOESH",
+                "phone": "8343739353",
+                "email": "joesh@gmail.com"
+            },
+            "branchId": {
+                "_id": "6a33e55e17298409cd4cbba7",
+                "name": "MYD",
+                "code": "MYD01"
+            },
+            "supplierInvoiceNumber": "121212",
+            "supplierInvoiceDate": "2026-06-19T00:00:00.000Z",
+            "purchaseDate": "2026-06-19T00:00:00.000Z",
+            "paymentStatus": "PAID",
+            "paidAmount": 149,
+            "pendingAmount": 0,
+            "paymentDetails": [
+                {
+                    "amount": 59,
+                    "paymentDate": "2026-06-19T00:00:00.000Z",
+                    "paymentMethod": "CARD",
+                    "notes": "",
+                    "attachment": "/uploads/payment-evidences/payment-1781877010165-4003.jpeg"
+                }
+            ],
+            "invoiceFile": "/uploads/invoices/invoice-1781876959408-65559.pdf",
+            "signatureFile": "/uploads/signatures/signature-1781876966189-4279.jpeg",
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "productId": {
+                        "_id": "6a3386b48875e56573753b37",
+                        "name": "IPHONE 15 PRO MAX",
+                        "category": "LAPTOP",
+                        "isSerialized": false
+                    },
+                    "quantity": 4,
+                    "serialNumbers": [],
+                    "purchasePrice": 30,
+                    "sellingPrice": 60,
+                    "totalPrice": 120
+                },
+                {
+                    "productId": {
+                        "_id": "6a2a66e235f48553f76be3d9",
+                        "name": "LAPTOP",
+                        "category": "LAPTOP",
+                        "isSerialized": true
+                    },
+                    "quantity": 1,
+                    "serialNumbers": [
+                        {
+                            "serialNumber": "2323232323"
+                        }
+                    ],
+                    "purchasePrice": 29,
+                    "sellingPrice": 40,
+                    "totalPrice": 29
+                }
+            ],
+            "totalAmount": 149,
+            "itemCount": 2,
+            "notes": "Test",
+            "createdBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "updatedBy": {
+                "_id": "6a33e55e17298409cd4cbba8",
+                "name": "MYD_ADMIN",
+                "email": "myd@gmail.com"
+            },
+            "isDeleted": false,
+            "createdAt": "2026-06-19T13:50:17.425Z",
+            "updatedAt": "2026-06-19T13:50:17.425Z",
+            "daysSince": 3,
+            "isOverdue": false
+        }
+    ],
+    "pagination": {
+        "total": 8,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 1
+    },
+    "stats": {
+        "total": 8,
+        "completed": 8,
+        "pending": 0,
+        "draft": 0,
+        "cancelled": 0,
+        "partial": 0,
+        "paid": 8,
+        "unpaid": 0,
+        "partialPayment": 0,
+        "totalAmount": 691,
+        "pendingAmount": 0
+    },
+    "filters": {
+        "search": "",
+        "status": "ALL",
+        "paymentStatus": "ALL",
+        "vendorId": "ALL",
+        "branchId": "ALL"
+    }
+}

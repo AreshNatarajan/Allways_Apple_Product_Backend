@@ -1,0 +1,63 @@
+
+MBA001
+
+///////////////////////////////////////////   PURCHASE API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+CREATE PURCHASE API 
+
+http://localhost:3000/api/purchase/create
+
+
+TEST DATA 
+
+{
+  "branchId": "684111111111111111111111",
+  "supplierName": "Apple Distributor",
+
+  "items": [
+    {
+      "productId": "684222222222222222222222",
+      "purchasePrice": 150000,
+      "serialNumber": "MB001"
+    },
+    {
+      "productId": "684222222222222222222222",
+      "purchasePrice": 150000,
+      "serialNumber": "MB002"
+    },
+    {
+      "productId": "684333333333333333333333",
+      "purchasePrice": 1200,
+      "barcode": "CHG001"
+    }
+  ]
+}
+
+
+
+
+
+/////////////////////////////////////////// PRODUCT API  \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+
+SEARCH PRODUCT 
+
+http://localhost:3000/api/product/options?search=z
+
+
+
+
+///////// need to chnGE
+
+
+
+
+
+
+
+//  get sales stats
+
+http://localhost:3000/api/sale/stats
+

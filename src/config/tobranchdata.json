@@ -1,0 +1,14 @@
+{
+    "fromBranchId": "",
+    "toBranchId": "6a3c50cd835e3eec2ae93993",
+    "products": [],
+    "reason": "",
+    "notes": "",
+    "status": "PENDING",
+    "createdBy": null,
+    "createdAt": "2026-06-24T22:42:34.127Z"
+}
+
+
+import Transfer from "../../models/Transfer.modal.js";
+import TransferHistory from "../../models/TransferHistory.modal.js";
