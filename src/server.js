@@ -53,7 +53,6 @@ import authRouter from "./routes/auth/authRouter.js";
 
 import productRouter from "./routes/product/product.router.js";
 import productSerialRouter from "./routes/productSerial/productSerial.router.js";
-import whatsappRouter from "./routes/whatsapp/whatsapp.router.js";
 import inventoryRouter from "./routes/inventory/inventory.router.js";
 import purchaseRouter from "./routes/purchase/purchase.router.js";
 import saleRouter from "./routes/sale/sale.router.js";
@@ -126,7 +125,6 @@ app.get("/isrunning", authMiddleware, (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/product", productRouter);
 app.use("/api/product-serial", productSerialRouter);
-app.use("/api/whatsapp", whatsappRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/purchase", purchaseRouter);
 app.use("/api/sale", saleRouter);
