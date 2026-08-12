@@ -123,10 +123,12 @@ const productSerialSchema = new mongoose.Schema(
     // NEVER the source of truth for a serialized unit - this is that
     // source of truth instead. Entered at Purchase time (see
     // createPurchase.controller.js), one row per physical unit.
+    // Two free-text slots per unit - main (primary condition/cosmetic
+    // note) and second (supplementary note) - both customer-relevant,
+    // entered together via the same Purchase Entry description modal.
     description: {
-      type: String,
-      default: "",
-      trim: true,
+      main: { type: String, default: "", trim: true },
+      second: { type: String, default: "", trim: true },
     },
 
     // Self-contained per-image objects (not parallel arrays like
@@ -148,6 +150,21 @@ const productSerialSchema = new mongoose.Schema(
       ],
       default: [],
     },
+
+    // Separate from `description` above by design - description is
+    // meant as the unit's condition/cosmetic note (customer-relevant,
+    // e.g. "small scratch"), notes is free-form internal/staff-facing
+    // text (e.g. "warranty transferred from previous owner", "customer
+    // requested faster shipping") - two distinct fields, not aliases of
+    // each other. Same per-unit ownership rule as description/images:
+    // entered at Purchase time, one row per physical unit, never a
+    // Product-level field.
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     // Output GST (margin-scheme) is NOT decided or stored at purchase
     // time - it's a different concept from purchaseGstPercent above,
     // read fresh from GstConfig.marginSchemeRate at the moment of sale

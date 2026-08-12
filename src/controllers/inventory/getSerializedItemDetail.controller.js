@@ -128,8 +128,9 @@ export const getSerializedItemDetailController = async (req, res) => {
                 modelNumber: item.modelNumber,
                 serialNumber: item.serialNumber,
                 status: item.status,
-                description: item.description || "",
+                description: item.description || { main: "", second: "" },
                 images: item.images || [],
+                notes: item.notes || "",
             },
             purchaseDetails: {
                 vendor: vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null,

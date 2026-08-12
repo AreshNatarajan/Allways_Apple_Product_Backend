@@ -26,7 +26,7 @@ const allowedOrigins = [
     "http://localhost:5173",
     "http://localhost:5174",
     "https://shopping-frontend-c82v.onrender.com",
-    "https://allways-apple-products-frontend.onrender.com"
+    // "https://allways-apple-products-frontend.onrender.com"
 ];
 
 app.use(cors({
@@ -53,6 +53,7 @@ import authRouter from "./routes/auth/authRouter.js";
 
 import productRouter from "./routes/product/product.router.js";
 import productSerialRouter from "./routes/productSerial/productSerial.router.js";
+import noteTemplateRouter from "./routes/noteTemplate/noteTemplate.router.js";
 import inventoryRouter from "./routes/inventory/inventory.router.js";
 import purchaseRouter from "./routes/purchase/purchase.router.js";
 import saleRouter from "./routes/sale/sale.router.js";
@@ -125,6 +126,7 @@ app.get("/isrunning", authMiddleware, (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/product", productRouter);
 app.use("/api/product-serial", productSerialRouter);
+app.use("/api/note-template", noteTemplateRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/purchase", purchaseRouter);
 app.use("/api/sale", saleRouter);

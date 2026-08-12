@@ -401,8 +401,21 @@ export const createPurchaseController = async (req, res) => {
                 // submitted (see uploadProductSerialStagingImage
                 // .controller.js) - only their {url,key,name} references
                 // arrive here, never raw file data.
-                const itemDescription = typeof item.description === "string"
-                    ? item.description.trim().slice(0, 1000)
+                // description is an object with two independent free-text
+                // slots - main (primary) and second (supplementary) - each
+                // validated/truncated the same way the single field used to be.
+                const itemDescription = {
+                    main: typeof item.description?.main === "string"
+                        ? item.description.main.trim().slice(0, 1000)
+                        : "",
+                    second: typeof item.description?.second === "string"
+                        ? item.description.second.trim().slice(0, 1000)
+                        : "",
+                };
+                // Separate free-form field from description (see
+                // ProductSerial.modal.js) - same validation treatment.
+                const itemNotes = typeof item.notes === "string"
+                    ? item.notes.trim().slice(0, 1000)
                     : "";
                 const rawItemImages = Array.isArray(item.images) ? item.images : [];
                 const itemImages = rawItemImages
@@ -446,6 +459,7 @@ export const createPurchaseController = async (req, res) => {
                     // comments on ProductSerial.modal.js).
                     description: itemDescription,
                     images: itemImages,
+                    notes: itemNotes,
                 });
 
                 const processedItem = {
@@ -994,8 +1008,9 @@ export const createPurchaseController = async (req, res) => {
                 purchaseGstPercent: serialData.purchaseGstPercent,
                 purchaseGstAmount: serialData.purchaseGstAmount,
                 hsnCode: serialData.hsnCode,
-                description: serialData.description || "",
+                description: serialData.description || { main: "", second: "" },
                 images: serialData.images || [],
+                notes: serialData.notes || "",
             });
             createdSerialRecords.push({ doc: serialDoc, serialData });
         }

@@ -111,8 +111,9 @@ export const getAllPurchasedProductsController = async (req, res) => {
             // description/images are the source of truth, never the
             // parent Product's (which don't describe this specific
             // unit's condition/photos).
-            description: product.description || "",
+            description: product.description || { main: "", second: "" },
             images: product.images || [],
+            notes: product.notes || "",
             purchaseId: product.purchaseId ? {
                 _id: product.purchaseId._id,
                 purchaseNumber: product.purchaseId.purchaseNumber,

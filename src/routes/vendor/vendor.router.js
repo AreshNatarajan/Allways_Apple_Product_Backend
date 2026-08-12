@@ -2,7 +2,6 @@ import express from "express";
 const router = express.Router();
 
 import authMiddleware from "../../middleware/authMiddleware.js";
-import onlySuperAdmin from "../../middleware/onlySuperAdmin.js";
 
 import { createVendorController } from "../../controllers/vendor/createVendor.controller.js";
 import { getVendorController } from "../../controllers/vendor/getVendor.controller.js";
@@ -14,10 +13,11 @@ import { reactivateVendorController } from "../../controllers/vendor/reactivateV
 import { getVendorForTablePagination } from "../../controllers/vendor/getVendroForTablePagination.controller.js";
 import { getVendorStatsController } from "../../controllers/vendor/getVendorStats.controller.js";
 
-// Vendor is a GLOBAL master (no branchId anywhere). Reads are open to
-// any authenticated role (SUPER_ADMIN/BRANCH_ADMIN/STAFF all need to
-// browse/select vendors, e.g. for Purchase later). Mutations
-// (create/update/deactivate/reactivate) are SUPER_ADMIN only.
+// Vendor is a GLOBAL master (no branchId anywhere), shared across every
+// branch. Both reads AND mutations (create/update/deactivate/
+// reactivate) are open to any authenticated role - SUPER_ADMIN,
+// BRANCH_ADMIN, and STAFF can all manage vendors, since any of them can
+// end up needing to add/fix a vendor while creating a Purchase.
 
 // =========================
 // STATIC ROUTES FIRST
@@ -30,9 +30,9 @@ router.get("/pagination", authMiddleware, getVendorForTablePagination);
 // /pagination is kept mounted as-is for the existing frontend caller.
 router.get("/list", authMiddleware, getVendorForTablePagination);
 
-router.post("/create", authMiddleware,  createVendorController);
-router.put("/update/:vendorId", authMiddleware,  updateVendorController);
-router.delete("/delete/:vendorId", authMiddleware,  deleteVendorController);
+router.post("/create", authMiddleware, createVendorController);
+router.put("/update/:vendorId", authMiddleware, updateVendorController);
+router.delete("/delete/:vendorId", authMiddleware, deleteVendorController);
 router.patch("/:vendorId/reactivate", authMiddleware, reactivateVendorController);
 
 // =========================
