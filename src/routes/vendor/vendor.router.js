@@ -30,10 +30,10 @@ router.get("/pagination", authMiddleware, getVendorForTablePagination);
 // /pagination is kept mounted as-is for the existing frontend caller.
 router.get("/list", authMiddleware, getVendorForTablePagination);
 
-router.post("/create", authMiddleware, onlySuperAdmin, createVendorController);
-router.put("/update/:vendorId", authMiddleware, onlySuperAdmin, updateVendorController);
-router.delete("/delete/:vendorId", authMiddleware, onlySuperAdmin, deleteVendorController);
-router.patch("/:vendorId/reactivate", authMiddleware, onlySuperAdmin, reactivateVendorController);
+router.post("/create", authMiddleware,  createVendorController);
+router.put("/update/:vendorId", authMiddleware,  updateVendorController);
+router.delete("/delete/:vendorId", authMiddleware,  deleteVendorController);
+router.patch("/:vendorId/reactivate", authMiddleware, reactivateVendorController);
 
 // =========================
 // DYNAMIC ROUTES LAST
