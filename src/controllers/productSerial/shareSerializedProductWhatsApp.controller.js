@@ -70,14 +70,14 @@ export const shareSerializedProductWhatsAppController = async (req, res) => {
             );
         }
 
+        // Location is optional, not required - a branch that hasn't set
+        // its Google Maps link yet still gets a real, useful share
+        // (photo/description/branch name), just without a map link in
+        // it. Falls back to a plain sentence rather than leaving the
+        // template's {{6}} placeholder empty (WhatsApp requires every
+        // declared placeholder to have a value).
         const branch = serial.currentBranchId;
-        if (!branch?.googleMapUrl) {
-            return errorResponse(
-                res,
-                "This serial's current branch has no Google Maps location set - add one in Branch settings before sharing",
-                400
-            );
-        }
+        const locationText = branch?.googleMapUrl || "Contact the branch for directions.";
 
         const productName = serial.productId?.name || "Product";
         const modelNumber = serial.modelNumber || serial.productId?.modelNumber || "-";
@@ -92,8 +92,8 @@ export const shareSerializedProductWhatsAppController = async (req, res) => {
                     { type: "text", text: modelNumber },
                     { type: "text", text: serial.serialNumber },
                     { type: "text", text: description },
-                    { type: "text", text: branch.name || "-" },
-                    { type: "text", text: branch.googleMapUrl },
+                    { type: "text", text: branch?.name || "-" },
+                    { type: "text", text: locationText },
                 ],
             },
         ];
