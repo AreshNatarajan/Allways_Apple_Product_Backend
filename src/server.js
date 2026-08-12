@@ -26,7 +26,7 @@ const allowedOrigins = [
     "http://localhost:5173",
     "http://localhost:5174",
     "https://shopping-frontend-c82v.onrender.com",
-    "https://allways-apple-product-backend.onrender.com"
+    "https://allways-apple-products-frontend.onrender.com"
 ];
 
 app.use(cors({
