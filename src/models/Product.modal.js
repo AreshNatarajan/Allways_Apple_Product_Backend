@@ -21,7 +21,7 @@ const productSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ["ACCESSORY", "MOBILE", "LAPTOP"],
+      enum: ["ACCESSORY", "MOBILE", "LAPTOP", "TAB"],
     },
 
     // ============================================================
@@ -70,8 +70,8 @@ const productSchema = new mongoose.Schema(
     // PRODUCT TYPE
     // =========================
     // Server-derived from `category` (see utils/deriveProductType.js) -
-    // never accepted from the client. ACCESSORY -> false, MOBILE/LAPTOP
-    // -> true.
+    // never accepted from the client. ACCESSORY -> false, MOBILE/LAPTOP/
+    // TAB -> true.
     isSerialized: {
       type: Boolean,
       default: false,

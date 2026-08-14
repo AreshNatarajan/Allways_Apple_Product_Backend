@@ -18,7 +18,7 @@ export const createProductController = async (req, res) => {
         } = req.body;
         // isSerialized is never trusted from the client - it's always
         // derived from category (ACCESSORY -> non-serialized, MOBILE/
-        // LAPTOP -> serialized), same trust-boundary principle as
+        // LAPTOP/TAB -> serialized), same trust-boundary principle as
         // role/branchId never being trusted from the request body.
         // Note: images are never accepted here - they're uploaded
         // separately via POST /:id/images once the product exists, so

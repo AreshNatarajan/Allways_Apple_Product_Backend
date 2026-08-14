@@ -5,6 +5,7 @@ export const CATEGORY_SERIALIZED_MAP = {
     ACCESSORY: false,
     MOBILE: true,
     LAPTOP: true,
+    TAB: true,
 };
 
 export const deriveIsSerialized = (category) => CATEGORY_SERIALIZED_MAP[category] ?? false;
