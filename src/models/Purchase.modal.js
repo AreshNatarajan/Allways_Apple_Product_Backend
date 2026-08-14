@@ -278,6 +278,67 @@ const purchaseSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // ============================================================
+    // ACCOUNTABILITY: HANDLED-BY / SELFIE / EOD APPROVAL
+    // ============================================================
+    // Purchase-level "who physically handled this at the counter" -
+    // distinct from paymentDetailSchema.handledBy above (which is a
+    // per-payment audit entry). This is the shared-device-problem fix:
+    // createdBy is just whoever is logged in on the branch terminal
+    // (often the same BRANCH_ADMIN login all day), so this field lets
+    // that login attribute an individual transaction to the actual
+    // staff member at the counter. Required for a BRANCH-flow purchase,
+    // optional for a SUPER_ADMIN/CENTRAL purchase (see
+    // createPurchase.controller.js) - resolved server-side from a
+    // submitted userId, never trusted as raw name/role from the client
+    // (same pattern as vendorSnapshot).
+    handledBy: {
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      name: {
+        type: String,
+        default: "",
+      },
+      role: {
+        type: String,
+        default: "",
+      },
+    },
+    // Camera-only proof-of-presence photo, mandatory for a BRANCH-flow
+    // purchase, unset for a SUPER_ADMIN/CENTRAL purchase. Not biometric
+    // auth - just a physical record of who was at the counter,
+    // paired with handledBy above. Uploaded to S3 before this document
+    // exists (see uploadPurchaseSelfie.controller.js), same staging
+    // pattern as ProductSerial's per-unit images.
+    selfie: {
+      key: { type: String, default: "" },
+      url: { type: String, default: "" },
+      uploadedAt: { type: Date, default: null },
+    },
+    // EOD (End of Day) audit-only review status - SUPER_ADMIN reviews
+    // BRANCH-flow purchases after the fact for fraud/accountability
+    // verification. Deliberately NEVER touches inventory, payment,
+    // invoice, or GST - those are already final by purchase time (see
+    // reviewPurchase.controller.js). Stays null for a CENTRAL/SUPER_ADMIN
+    // purchase, which is out of EOD review's scope entirely (a
+    // trusted, direct entry, not a counter transaction to audit).
+    processStatus: {
+      type: String,
+      enum: ["PENDING_REVIEW", "APPROVED", "REJECTED"],
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -318,6 +379,9 @@ purchaseSchema.index({ isDeleted: 1, vendorId: 1 });
 // (a purchase's own branchId is null for CENTRAL - the destination
 // branch lives per item instead).
 purchaseSchema.index({ "items.branchId": 1 });
+// Supports the EOD review list, which always filters BRANCH-flow
+// purchases by processStatus together.
+purchaseSchema.index({ isDeleted: 1, poType: 1, processStatus: 1 });
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE

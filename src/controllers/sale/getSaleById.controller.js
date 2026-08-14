@@ -26,6 +26,8 @@ export const getSaleByIdController = async (req, res) => {
             .populate("items.productId", "name category description images productCode hsnCode isSerialized")
             .populate("items.productSerialId", "serialNumber modelNumber status description images notes")
             .populate("paymentDetails.handledBy.userId", "name email role")
+            .populate("handledBy.userId", "name email role")
+            .populate("reviewedBy", "name email")
             .lean();
 
         if (!sale) {

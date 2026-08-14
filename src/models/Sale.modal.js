@@ -456,6 +456,63 @@ const salesSchema = new mongoose.Schema(
     },
 
     // ----------------------------------------------------------
+    // ACCOUNTABILITY: HANDLED-BY / SELFIE / EOD APPROVAL
+    // ----------------------------------------------------------
+    // Sale-level "who physically handled this at the counter" -
+    // distinct from paymentDetailSchema.handledBy above (a per-payment
+    // audit entry). Sale has no CENTRAL/BRANCH poType split like
+    // Purchase - every sale ties to req.user.branchId regardless of
+    // role, so the mandatory-vs-optional line is drawn purely on role
+    // in createSale.controller.js (mandatory when the creator isn't
+    // SUPER_ADMIN, optional/unset for SUPER_ADMIN). Never trusted as
+    // raw name/role from the client - resolved server-side from a
+    // submitted userId, same pattern as customerSnapshot.
+    handledBy: {
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      name: {
+        type: String,
+        default: "",
+      },
+      role: {
+        type: String,
+        default: "",
+      },
+    },
+    // Camera-only proof-of-presence photo, mandatory whenever handledBy
+    // is mandatory, unset for a SUPER_ADMIN-created sale. Uploaded to
+    // S3 before this document exists (see uploadSaleSelfie.controller.js).
+    selfie: {
+      key: { type: String, default: "" },
+      url: { type: String, default: "" },
+      uploadedAt: { type: Date, default: null },
+    },
+    // EOD (End of Day) audit-only review status - SUPER_ADMIN reviews
+    // a non-SUPER_ADMIN-created sale after the fact for fraud/
+    // accountability verification, from the sale's own detail page
+    // (see reviewSale.controller.js). Deliberately NEVER touches stock,
+    // payment, invoice, or GST - those are already final by sale time.
+    // Stays null for a SUPER_ADMIN-created sale, which is out of EOD
+    // review's scope entirely (a trusted, direct entry).
+    processStatus: {
+      type: String,
+      enum: ["PENDING_REVIEW", "APPROVED", "REJECTED"],
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ----------------------------------------------------------
     // SIGNATURE
     // ----------------------------------------------------------
 
@@ -555,6 +612,8 @@ salesSchema.index({ isDeleted: 1, branchId: 1 });
 salesSchema.index({ isDeleted: 1, customerId: 1 });
 salesSchema.index({ isDeleted: 1, paymentStatus: 1 });
 salesSchema.index({ isDeleted: 1, status: 1 });
+// Supports the EOD review filter on a sale's own detail page.
+salesSchema.index({ isDeleted: 1, processStatus: 1 });
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE

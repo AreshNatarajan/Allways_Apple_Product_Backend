@@ -316,15 +316,23 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
                         batchStock.sellingPrice || 0,
 
                     // ------------------------------------------------
-                    // GST - straight from this batch's own record,
-                    // stamped once at receive time.
+                    // GST - gstApplicable is real batch state (always
+                    // true for non-serialized, per business rule),  but
+                    // the RATE is never the batch's own frozen
+                    // purchase-time rate - the government can change GST
+                    // on goods at any time, so a sale always charges
+                    // whatever's currently configured (GstConfig.
+                    // standardRate), matching what createSale.controller.js
+                    // itself actually charges - this preview must show
+                    // the exact same number the sale will be created
+                    // with, never a stale one.
                     // ------------------------------------------------
 
                     gstApplicable:
                         batchStock.gstApplicable ?? true,
 
                     gstPercent:
-                        batchStock.purchaseGstPercent || 0,
+                        gstConfig.standardRate || 0,
 
                     hsnCode: product.hsnCode,
 

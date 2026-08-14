@@ -3,12 +3,14 @@ import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import Customer from "../../models/Customer.modal.js";
 import Branch from "../../models/Branch.modal.js";
+import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import paginate from "../../utils/pagination.js";
 
 const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PARTIAL", "UNPAID"];
+const PROCESS_STATUS_VALUES = ["PENDING_REVIEW", "APPROVED", "REJECTED"];
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -80,7 +82,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllSalesController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search, status, paymentStatus, customerId, branchId, startDate, endDate } = req.query;
+        const { search, status, paymentStatus, customerId, branchId, startDate, endDate, processStatus, modelNumber } = req.query;
         const user = req.user;
 
         // ============================================================
@@ -97,6 +99,18 @@ export const getAllSalesController = async (req, res) => {
         }
         if (customerId && customerId !== "ALL" && mongoose.Types.ObjectId.isValid(customerId)) {
             filter.customerId = customerId;
+        }
+        // processStatus only ever exists on a non-SUPER_ADMIN-created
+        // sale (see Sale.modal.js) - filtering by it implicitly excludes
+        // every SUPER_ADMIN sale, no separate condition needed.
+        if (processStatus && processStatus !== "ALL" && PROCESS_STATUS_VALUES.includes(processStatus)) {
+            filter.processStatus = processStatus;
+        }
+        // Model Number is already stored flat on Sale.items[] (unlike
+        // Purchase, which needed a Product-master lookup) - a direct
+        // regex match against the embedded field, no extra query.
+        if (modelNumber && modelNumber.trim() !== "") {
+            andConditions.push({ "items.modelNumber": new RegExp(escapeRegex(modelNumber.trim()), "i") });
         }
 
         // Business sale date, not record-creation timestamp - matches
@@ -207,10 +221,12 @@ export const getAllSalesController = async (req, res) => {
             Sale.find(filter)
                 .populate("customerId", "name mobile email phone")
                 .populate("branchId", "name code")
-                .populate("items.productId", "name productCode category isSerialized")
+                .populate("items.productId", "name productCode category isSerialized description")
                 .populate("items.productSerialId", "serialNumber")
                 .populate("createdBy", "name email")
                 .populate("updatedBy", "name email")
+                .populate("handledBy.userId", "name email")
+                .populate("reviewedBy", "name email")
                 .sort({ saleDate: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
@@ -220,14 +236,63 @@ export const getAllSalesController = async (req, res) => {
         const totalRecords = allFiltered.length;
 
         // ============================================================
+        // 2.5 FIRST-ITEM DESCRIPTION LOOKUP (page-bounded, cheap) - the
+        // simplified Sale List shows one row per Sale document with the
+        // FIRST item's Model/Serial/Description flattened directly onto
+        // the row (a sale with more items gets a "+N more" indicator
+        // instead of a nested items table - mirrors Purchase's list).
+        // modelNumber/serialNumber are already stored flat on
+        // Sale.items[] (no lookup needed), but description isn't - a
+        // serialized item's description lives on its own ProductSerial
+        // record, batch-fetched here by productSerialId (a non-serialized
+        // item's description comes from the already-populated
+        // items.productId above instead).
+        // ============================================================
+        const firstItemSerialIds = [];
+        for (const saleDoc of salesPage) {
+            const firstItem = (saleDoc.items || [])[0];
+            if (firstItem?.isSerialized && firstItem.productSerialId) {
+                firstItemSerialIds.push(firstItem.productSerialId._id || firstItem.productSerialId);
+            }
+        }
+        const firstItemSerials = firstItemSerialIds.length > 0
+            ? await ProductSerial.find({ _id: { $in: firstItemSerialIds } }).select("description").lean()
+            : [];
+        const serialDescriptionById = new Map(firstItemSerials.map((s) => [s._id.toString(), s.description]));
+
+        // ============================================================
         // 3. TRANSFORM PAGE ROWS - bounded to `limit` sales, cheap.
         // ============================================================
 
         const sales = salesPage.map((saleDoc) => {
             const sale = saleDoc.toObject();
+
+            // First-item preview for the simplified list row - "-" for
+            // Model/Serial on a non-serialized item, per the same
+            // non-serialized display rule Purchase's list uses.
+            const firstItem = (sale.items || [])[0] || null;
+            let modelNumber = "-", serialNumber = "-", smallDescription = "";
+            if (firstItem) {
+                if (firstItem.isSerialized) {
+                    modelNumber = firstItem.modelNumber || "-";
+                    serialNumber = firstItem.serialNumber || "-";
+                    const serialId = firstItem.productSerialId?._id?.toString() || firstItem.productSerialId?.toString();
+                    smallDescription = serialDescriptionById.get(serialId)?.main || "";
+                } else {
+                    smallDescription = firstItem.productId?.description || "";
+                }
+            }
+            const moreItemsCount = Math.max(0, (sale.items || []).length - 1);
+            const itemSellingPrice = firstItem?.sellingPrice ?? null;
+
             return {
                 _id: sale._id,
                 saleNumber: sale.saleNumber,
+                modelNumber,
+                serialNumber,
+                smallDescription,
+                moreItemsCount,
+                itemSellingPrice,
                 customerId: sale.customerId ? {
                     _id: sale.customerId._id,
                     name: sale.customerId.name,
@@ -242,6 +307,18 @@ export const getAllSalesController = async (req, res) => {
                     code: sale.branchId.code,
                 } : null,
                 saleDate: sale.saleDate,
+                // Accountability - handledBy/selfie stay unset for a
+                // SUPER_ADMIN-created sale; processStatus stays null
+                // there too (out of EOD review's scope, see Sale.modal.js).
+                handledBy: sale.handledBy?.userId ? {
+                    userId: sale.handledBy.userId._id,
+                    name: sale.handledBy.name || sale.handledBy.userId.name || "",
+                    role: sale.handledBy.role || "",
+                } : null,
+                selfie: sale.selfie?.url ? { key: sale.selfie.key, url: sale.selfie.url, uploadedAt: sale.selfie.uploadedAt } : null,
+                processStatus: sale.processStatus || null,
+                reviewedBy: sale.reviewedBy ? { _id: sale.reviewedBy._id, name: sale.reviewedBy.name, email: sale.reviewedBy.email } : null,
+                reviewedAt: sale.reviewedAt || null,
                 items: sale.items.map((item) => ({
                     _id: item._id,
                     productId: item.productId ? {
@@ -548,6 +625,8 @@ export const getAllSalesController = async (req, res) => {
                 branchId: branchId || "ALL",
                 startDate: startDate || null,
                 endDate: endDate || null,
+                processStatus: processStatus || "ALL",
+                modelNumber: modelNumber || "",
             },
         });
     } catch (error) {

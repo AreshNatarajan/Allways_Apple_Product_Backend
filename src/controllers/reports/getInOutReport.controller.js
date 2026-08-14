@@ -7,22 +7,27 @@ import Branch from "../../models/Branch.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 /**
- * 📋 IN / OUT REGISTER REPORT
+ * 📋 IN / OUT REGISTER REPORT (simplified, auditor-facing)
  *
- * Returns every row needed to build both Excel reports the frontend
- * generates client-side (GST-applicable-only, and the overall
- * register) - one backend call, since every row already carries its own
- * `gstApplicable` flag, the frontend just filters the same data twice
- * rather than this endpoint being queried twice.
+ * Returns exactly the rows the frontend needs to build the IN/OUT Excel
+ * workbook(s) - no GST column, no stats, no internal IDs in the sheet
+ * itself. Every row also carries its own `gstApplicable` flag (metadata
+ * only, never rendered as a column) so the frontend can build BOTH the
+ * Overall report and a GST-Applicable-only report from this same one
+ * fetch, by filtering client-side, exactly like the Purchase/Sale list
+ * screens' own filter patterns - never a second API call. Every field
+ * here is read straight from the existing business records (Purchase/
+ * Sale/ProductSerial/BatchStock/Product), never recalculated - this
+ * endpoint only selects and relabels, it does not compute anything new.
  *
  * IN = one row per physical unit received (ProductSerial, serialized)
  * or per batch received (BatchStock, non-serialized), joined back to
- * the Purchase that created it for date/dealer/payment info.
+ * the Purchase that created it for date/vendor/payment info.
  * OUT = one row per sale line item (Sale.items, both types), joined to
- * ProductSerial for a serialized item's own notes (never Product-level
- * - see ProductSerial.modal.js's ownership rule).
+ * ProductSerial (serialized) or Product (non-serialized) for the
+ * short description.
  *
- * Dealer/customer identity uses the frozen vendorSnapshot/
+ * Vendor/customer identity uses the frozen vendorSnapshot/
  * customerSnapshot on the parent Purchase/Sale, never a live lookup -
  * matches this app's "historical record never drifts" principle used
  * everywhere else (P&L, invoices, etc).
@@ -51,9 +56,11 @@ const buildDateRange = (startDate, endDate) => {
 };
 
 // Serialized IN rows - one per physical unit, joined to its own
-// Purchase for date/dealer/payment (a purchase-level total, repeated
+// Purchase for date/vendor/payment (a purchase-level total, repeated
 // across every unit that purchase created - standard for a flattened
-// register export).
+// register export). Description is this unit's own ProductSerial
+// description (main line only, per the "short description" rule) -
+// never Product-level, per this codebase's per-unit ownership rule.
 const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
     const pipeline = [
         { $match: { isDeleted: false, ...branchMatch } },
@@ -76,17 +83,20 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
             type: { $literal: "Serialized" },
             date: "$purchase.purchaseDate",
             modelNumber: { $ifNull: ["$modelNumber", ""] },
-            productCode: { $literal: "" },
-            serialOrBatch: "$serialNumber",
+            description: { $ifNull: ["$description.main", ""] },
             qty: { $literal: 1 },
             price: { $ifNull: ["$purchasePrice", 0] },
-            paidAmount: { $ifNull: ["$purchase.paidAmount", 0] },
-            pendingAmount: { $ifNull: ["$purchase.pendingAmount", 0] },
             paymentStatus: "$purchase.paymentStatus",
-            partyName: { $ifNull: ["$purchase.vendorSnapshot.name", ""] },
-            partyMobile: { $ifNull: ["$purchase.vendorSnapshot.phone", ""] },
-            remarks: { $ifNull: ["$notes", ""] },
-            status: 1,
+            vendorName: { $ifNull: ["$purchase.vendorSnapshot.name", ""] },
+            vendorContact: { $ifNull: ["$purchase.vendorSnapshot.phone", ""] },
+            // Current serial status is a real, always-set enum
+            // (AVAILABLE/ASSIGNED/RESERVED/IN_TRANSIT/SOLD/DAMAGED/
+            // MISSING) - passed through as-is, never blank.
+            availability: "$status",
+            // Row metadata only - never rendered as a spreadsheet column
+            // (see buildInOutWorkbook.js), used purely so the frontend
+            // can build the second, GST-applicable-only download from
+            // the same fetched row set without a second API call.
             gstApplicable: { $ifNull: ["$gstApplicable", false] },
         },
     });
@@ -94,8 +104,12 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
     return ProductSerial.aggregate(pipeline);
 };
 
-// Non-serialized IN rows - one per batch received. remarks stays blank
-// (no per-batch notes equivalent).
+// Non-serialized IN rows - one per batch received. Model Number has no
+// non-serialized equivalent anywhere in this app (it's a serialized-only
+// concept), so it's always "—" via the frontend's textOr - never
+// invented here. Description comes from the Product master (shared
+// across every batch of that product, per Product.modal.js's own
+// ownership rule for non-serialized items).
 const getInRowsNonSerialized = async ({ dateRange, branchMatch }) => {
     const pipeline = [
         { $match: { ...branchMatch } },
@@ -112,36 +126,50 @@ const getInRowsNonSerialized = async ({ dateRange, branchMatch }) => {
     ];
     if (dateRange) pipeline.push({ $match: { "purchase.purchaseDate": dateRange } });
 
-    pipeline.push({
-        $project: {
-            _id: 0,
-            type: { $literal: "Non-Serialized" },
-            date: "$purchase.purchaseDate",
-            modelNumber: { $literal: "" },
-            productCode: { $ifNull: ["$productCode", ""] },
-            serialOrBatch: "$batchNumber",
-            qty: { $ifNull: ["$quantity", 0] },
-            price: { $ifNull: ["$purchasePrice", 0] },
-            paidAmount: { $ifNull: ["$purchase.paidAmount", 0] },
-            pendingAmount: { $ifNull: ["$purchase.pendingAmount", 0] },
-            paymentStatus: "$purchase.paymentStatus",
-            partyName: { $ifNull: ["$purchase.vendorSnapshot.name", ""] },
-            partyMobile: { $ifNull: ["$purchase.vendorSnapshot.phone", ""] },
-            remarks: { $literal: "" },
-            status: 1,
-            // Non-serialized is always GST-applicable per business rule
-            // (see createSale.controller.js) - default true rather than
-            // reading a field that may not exist on older records.
-            gstApplicable: { $ifNull: ["$gstApplicable", true] },
+    pipeline.push(
+        {
+            $lookup: {
+                from: "products",
+                localField: "productId",
+                foreignField: "_id",
+                as: "product",
+            },
         },
-    });
+        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+        {
+            $project: {
+                _id: 0,
+                type: { $literal: "Non-Serialized" },
+                date: "$purchase.purchaseDate",
+                modelNumber: { $literal: "" },
+                description: { $ifNull: ["$product.description", ""] },
+                qty: { $ifNull: ["$quantity", 0] },
+                price: { $ifNull: ["$purchasePrice", 0] },
+                paymentStatus: "$purchase.paymentStatus",
+                vendorName: { $ifNull: ["$purchase.vendorSnapshot.name", ""] },
+                vendorContact: { $ifNull: ["$purchase.vendorSnapshot.phone", ""] },
+                // Current available quantity - a real number, 0 is a
+                // meaningful "fully sold out" value, never blank.
+                availability: { $ifNull: ["$availableQuantity", 0] },
+                // Row metadata only - never rendered as a spreadsheet
+                // column (see buildInOutWorkbook.js). Non-serialized is
+                // always GST-applicable per business rule (see
+                // createSale.controller.js) - default true rather than
+                // reading a field that may not exist on older records.
+                gstApplicable: { $ifNull: ["$gstApplicable", true] },
+            },
+        }
+    );
 
     return BatchStock.aggregate(pipeline);
 };
 
 // OUT rows - one per sale line item, both types together (isSerialized
 // picks the branch inline rather than two separate queries, since both
-// live on the exact same Sale.items array).
+// live on the exact same Sale.items array). purchaseAmount/saleAmount/
+// profit are read straight off the already-frozen Sale.items fields
+// (purchasePrice/finalAmount/profit), stamped once at sale time from the
+// real ProductSerial/BatchStock cost - never recalculated here.
 const getOutRows = async ({ dateRange, branchMatch }) => {
     const pipeline = [
         { $match: { status: "COMPLETED", isDeleted: false, ...branchMatch } },
@@ -159,22 +187,47 @@ const getOutRows = async ({ dateRange, branchMatch }) => {
             },
         },
         {
+            $lookup: {
+                from: "products",
+                localField: "items.productId",
+                foreignField: "_id",
+                as: "product",
+            },
+        },
+        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+        {
             $project: {
                 _id: 0,
-                type: { $cond: ["$items.isSerialized", "Serialized", "Non-Serialized"] },
                 date: "$saleDate",
-                modelNumber: { $cond: ["$items.isSerialized", { $ifNull: ["$items.modelNumber", ""] }, ""] },
-                productCode: { $cond: ["$items.isSerialized", "", { $ifNull: ["$items.productCode", ""] }] },
-                serialOrBatch: { $cond: ["$items.isSerialized", "$items.serialNumber", "$items.batchNumber"] },
-                purchasePrice: { $ifNull: ["$items.purchasePrice", 0] },
-                salePrice: { $ifNull: ["$items.sellingPrice", 0] },
-                partyName: { $ifNull: ["$customerSnapshot.name", ""] },
-                partyMobile: { $ifNull: ["$customerSnapshot.mobile", ""] },
-                paidAmount: { $ifNull: ["$paidAmount", 0] },
-                pendingAmount: { $ifNull: ["$pendingAmount", 0] },
+                // Model Number is serialized-only (stamped from
+                // ProductSerial.modelNumber at sale time) - blank on a
+                // non-serialized item, which the frontend renders as "—".
+                modelNumber: { $ifNull: ["$items.modelNumber", ""] },
+                serialNumber: {
+                    $cond: ["$items.isSerialized", { $ifNull: ["$items.serialNumber", ""] }, ""],
+                },
+                description: {
+                    $cond: [
+                        "$items.isSerialized",
+                        { $ifNull: [{ $arrayElemAt: ["$serial.description.main", 0] }, ""] },
+                        { $ifNull: ["$product.description", ""] },
+                    ],
+                },
+                purchaseAmount: { $ifNull: ["$items.purchasePrice", 0] },
+                // finalAmount is the real, discount/GST-inclusive line
+                // total already computed and frozen at sale time - the
+                // actual recorded sale amount, not the pre-adjustment
+                // unit sellingPrice.
+                saleAmount: { $ifNull: ["$items.finalAmount", 0] },
+                customerName: { $ifNull: ["$customerSnapshot.name", ""] },
+                customerContact: { $ifNull: ["$customerSnapshot.mobile", ""] },
                 paymentStatus: 1,
-                remarks: { $ifNull: [{ $arrayElemAt: ["$serial.notes", 0] }, ""] },
                 profit: { $ifNull: ["$items.profit", 0] },
+                // Row metadata only - never rendered as a spreadsheet
+                // column (see buildInOutWorkbook.js), used purely so the
+                // frontend can build the second, GST-applicable-only
+                // download from the same fetched row set without a
+                // second API call.
                 gstApplicable: { $ifNull: ["$items.gstApplicable", false] },
             },
         }

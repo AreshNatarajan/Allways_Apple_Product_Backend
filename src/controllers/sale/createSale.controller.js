@@ -6,6 +6,7 @@ import Inventory from "../../models/Inventory.modal.js";
 import Product from "../../models/Product.modal.js";
 import Purchase from "../../models/Purchase.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
+import User from "../../models/User.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
@@ -35,6 +36,10 @@ export const createSaleController = async (req, res) => {
             notes,
             signatureFile,
             status = "COMPLETED",
+            // Accountability fields - required whenever the creator isn't
+            // SUPER_ADMIN (see §2.5 below), optional for SUPER_ADMIN.
+            handledByUserId = null,
+            selfie = null,
         } = req.body;
 
         // ============================================================
@@ -64,6 +69,68 @@ export const createSaleController = async (req, res) => {
             session.endSession();
             return errorResponse(res, message, statusCode);
         };
+
+        // ============================================================
+        // 2.5 HANDLED-BY / SELFIE VALIDATION (accountability)
+        // ============================================================
+        // Sale has no CENTRAL/BRANCH poType split like Purchase - every
+        // sale ties to req.user.branchId regardless of role, so the
+        // mandatory-vs-optional line is drawn on role alone: a
+        // SUPER_ADMIN entry is trusted/direct, everyone else (BRANCH_ADMIN,
+        // STAFF) is a counter transaction that needs accountability.
+        // Never trust a client-submitted name/role - always re-resolved
+        // fresh from the DB (same rule as customerSnapshot).
+        const isBranchFlow = user?.role !== "SUPER_ADMIN";
+        let handledBySnapshot = null;
+        let selfieSnapshot = null;
+        let processStatus = null;
+
+        if (isBranchFlow) {
+            if (!handledByUserId) {
+                return rollback("Handled By user is required for this sale");
+            }
+            if (!selfie || !selfie.key || !selfie.url) {
+                return rollback("A selfie capture is required for this sale");
+            }
+        }
+
+        if (handledByUserId) {
+            if (!mongoose.Types.ObjectId.isValid(handledByUserId)) {
+                return rollback("Invalid Handled By user ID");
+            }
+            const handledByUser = await User.findOne({
+                _id: handledByUserId,
+                isDeleted: false,
+            }).session(session);
+
+            if (!handledByUser || !handledByUser.isActive) {
+                return rollback("Handled By user not found or inactive", 404);
+            }
+            if (
+                isBranchFlow &&
+                (!handledByUser.branchId || handledByUser.branchId.toString() !== branchId.toString())
+            ) {
+                return rollback("Handled By user does not belong to this branch");
+            }
+
+            handledBySnapshot = {
+                userId: handledByUser._id,
+                name: handledByUser.name || "",
+                role: handledByUser.role || "",
+            };
+        }
+
+        if (selfie && selfie.key && selfie.url) {
+            selfieSnapshot = {
+                key: selfie.key,
+                url: selfie.url,
+                uploadedAt: new Date(),
+            };
+        }
+
+        if (isBranchFlow) {
+            processStatus = "PENDING_REVIEW";
+        }
 
         // ============================================================
         // 3. VALIDATE PAYMENT DETAILS
@@ -356,14 +423,26 @@ export const createSaleController = async (req, res) => {
                     productId: product._id,
                     purchasePrice: batchStock.purchasePrice || 0,
                     gstApplicable: true,
-                    gstPercent: batchStock.purchaseGstPercent || 0,
+                    // Live global rate, not the batch's own frozen
+                    // purchase-time rate - see the matching comment
+                    // below.
+                    gstPercent: gstConfig.standardRate || 0,
                 });
 
-                // ✅ Authoritative cost + GST straight from this exact
-                // batch's own record - never client-supplied.
+                // ✅ Authoritative cost straight from this exact batch's
+                // own record - never client-supplied. GST rate is
+                // deliberately NOT read from batchStock.purchaseGstPercent
+                // here - the government can change the GST rate on goods
+                // at any time, so a non-serialized SALE always charges
+                // whatever rate is currently configured (GstConfig.
+                // standardRate, the same "read fresh at the moment of
+                // each sale" rule already used for marginSchemeRate on
+                // the serialized branch above), never the rate that
+                // happened to be in effect back when this batch was
+                // purchased.
                 purchasePrice = batchStock.purchasePrice || 0;
                 gstApplicable = true; // non-serialized is always GST-applicable per business rule
-                gstPercent = batchStock.purchaseGstPercent || 0;
+                gstPercent = gstConfig.standardRate || 0;
 
                 // BatchStock doesn't itself carry purchaseNumber (only
                 // purchaseId) - one lightweight lookup for traceability,
@@ -497,6 +576,11 @@ export const createSaleController = async (req, res) => {
                 status: status || "COMPLETED",
                 signatureFile: signatureFile || null,
                 notes: notes || "",
+                // Accountability - see §2.5 above for how these were
+                // resolved and validated.
+                handledBy: handledBySnapshot || undefined,
+                selfie: selfieSnapshot || undefined,
+                processStatus,
                 createdBy: user?._id,
                 updatedBy: user?._id,
                 isActive: status !== "CANCELLED",

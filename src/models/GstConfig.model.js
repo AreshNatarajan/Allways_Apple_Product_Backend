@@ -94,10 +94,16 @@ const gstConfigSchema = new mongoose.Schema(
       max: 100,
     },
 
-    // Default/suggested rate surfaced when selecting GST for a
-    // non-serialized purchase - non-serialized GST is always actually
-    // captured per-batch at purchase time (Batch/BatchStock.
-    // purchaseGstPercent), this is only ever a starting suggestion.
+    // Dual role: (1) default/suggested rate surfaced when selecting GST
+    // for a non-serialized PURCHASE - genuinely captured per-batch at
+    // that moment (Batch/BatchStock.purchaseGstPercent), this is only a
+    // starting suggestion there. (2) the authoritative rate charged on
+    // a non-serialized SALE - read fresh at the moment of each sale
+    // (see createSale.controller.js), same "current settings, not a
+    // frozen snapshot" rule already used for marginSchemeRate on the
+    // serialized side. A non-serialized sale never reuses the batch's
+    // own purchaseGstPercent, since the government can change the GST
+    // rate on goods at any time between purchase and sale.
     standardRate: {
       type: Number,
       default: 0,

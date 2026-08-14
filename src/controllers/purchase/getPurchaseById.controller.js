@@ -35,6 +35,8 @@ export const getPurchaseByIdController = async (req, res) => {
             .populate("updatedBy", "name email")
             .populate("items.productId", "name productCode category isSerialized hsnCode description")
             .populate("paymentDetails.handledBy.userId", "name email")
+            .populate("handledBy.userId", "name email")
+            .populate("reviewedBy", "name email")
             .lean();
 
         if (!purchase) {

@@ -13,6 +13,7 @@ const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PENDING", "PARTIAL"];
 const PO_TYPE_VALUES = ["CENTRAL", "BRANCH"];
+const PROCESS_STATUS_VALUES = ["PENDING_REVIEW", "APPROVED", "REJECTED"];
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -103,7 +104,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllPurchasesController = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate } = req.query;
+    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, processStatus, modelNumber } = req.query;
     const user = req.user;
 
     // ============================================================
@@ -123,6 +124,12 @@ export const getAllPurchasesController = async (req, res) => {
     }
     if (vendorId && vendorId !== "ALL" && mongoose.Types.ObjectId.isValid(vendorId)) {
       filter.vendorId = vendorId;
+    }
+    // processStatus only ever exists on a BRANCH-flow purchase (see
+    // Purchase.modal.js) - filtering by it here implicitly only ever
+    // matches BRANCH purchases, no separate poType condition needed.
+    if (processStatus && processStatus !== "ALL" && PROCESS_STATUS_VALUES.includes(processStatus)) {
+      filter.processStatus = processStatus;
     }
 
     // Business purchase date, not record-creation timestamp - matches
@@ -163,6 +170,22 @@ export const getAllPurchasesController = async (req, res) => {
         return successResponse(res, "Purchases retrieved successfully", emptyStatsPayload(page, limit));
       }
       andConditions.push(branchScopeCondition(user.branchId));
+    }
+
+    // ---- model number filter (click-to-filter chip) ----
+    // Model Number lives on the Product master for a serialized product
+    // (one product = one master model number, per-unit modelNumber on
+    // ProductSerial is display-only elsewhere) - resolve matching
+    // Products once, then match purchases whose items reference one.
+    if (modelNumber && modelNumber.trim() !== "") {
+      const modelRegex = new RegExp(escapeRegex(modelNumber.trim()), "i");
+      const matchingModelProducts = await Product.find({
+        isDeleted: false,
+        modelNumber: modelRegex,
+      }).select("_id");
+      andConditions.push({
+        "items.productId": { $in: matchingModelProducts.map((p) => p._id) },
+      });
     }
 
     // ---- search ----
@@ -222,7 +245,9 @@ export const getAllPurchasesController = async (req, res) => {
         .populate("branchId", "name code")
         .populate("createdBy", "name email")
         .populate("updatedBy", "name email")
-        .populate("items.productId", "name productCode category isSerialized hsnCode")
+        .populate("handledBy.userId", "name email")
+        .populate("reviewedBy", "name email")
+        .populate("items.productId", "name productCode category isSerialized hsnCode description")
         .sort({ purchaseDate: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -230,6 +255,30 @@ export const getAllPurchasesController = async (req, res) => {
     ]);
 
     const totalRecords = allFiltered.length;
+
+    // ============================================================
+    // 2.5 FIRST-ITEM PREVIEW LOOKUP (page-bounded, cheap) - the
+    // simplified Purchase List shows one row per Purchase document with
+    // the FIRST item's Model/Serial/Description flattened directly onto
+    // the row (a purchase with more items gets a "+N more" indicator
+    // instead of a nested items table - most purchases are single-item
+    // anyway). A serialized item's modelNumber/description live on its
+    // own ProductSerial record, never the item itself - batch-fetched
+    // here by serial number, same lookup shape as
+    // getPurchaseById.controller.js's serialsBySerialNumber map.
+    // ============================================================
+    const firstItemSerialNumbers = [];
+    for (const purchaseDoc of purchasesPage) {
+      const firstItem = (purchaseDoc.items || [])[0];
+      const sn = firstItem?.serialNumbers?.[0]?.serialNumber;
+      if (firstItem && isSerializedItem(firstItem) && sn) firstItemSerialNumbers.push(sn);
+    }
+    const firstItemSerials = firstItemSerialNumbers.length > 0
+      ? await ProductSerial.find({ serialNumber: { $in: firstItemSerialNumbers } })
+          .select("serialNumber modelNumber description")
+          .lean()
+      : [];
+    const serialPreviewByNumber = new Map(firstItemSerials.map((s) => [s.serialNumber, s]));
 
     // ============================================================
     // 3. RECEIVE-STATE LOOKUP - bounded to the CENTRAL purchases
@@ -302,10 +351,37 @@ export const getAllPurchasesController = async (req, res) => {
 
       const daysSince = Math.ceil((new Date() - new Date(purchase.createdAt)) / (1000 * 60 * 60 * 24));
 
+      // First-item preview for the simplified list row - "-" for
+      // Model/Serial on a non-serialized item, per the spec's explicit
+      // non-serialized display rule.
+      const firstItem = items[0] || null;
+      let modelNumber = "-", serialNumber = "-", smallDescription = "";
+      if (firstItem) {
+        if (isSerializedItem(firstItem)) {
+          const sn = firstItem.serialNumbers?.[0]?.serialNumber;
+          const preview = sn ? serialPreviewByNumber.get(sn) : null;
+          modelNumber = preview?.modelNumber || "-";
+          serialNumber = sn || "-";
+          smallDescription = preview?.description?.main || "";
+        } else {
+          smallDescription = firstItem.productId?.description || "";
+        }
+      }
+      const moreItemsCount = Math.max(0, items.length - 1);
+      // The featured (first) item's own unit price - distinct from
+      // totalAmount below, which is the WHOLE purchase's grand total
+      // across every item/GST/round-off.
+      const itemPurchasePrice = firstItem?.purchasePrice ?? null;
+
       return {
         _id: purchase._id,
         purchaseNumber: purchase.purchaseNumber,
         purchaseDate: purchase.purchaseDate,
+        modelNumber,
+        serialNumber,
+        smallDescription,
+        moreItemsCount,
+        itemPurchasePrice,
         poType: purchase.poType,
         vendorId: purchase.vendorId ? {
           _id: purchase.vendorId._id,
@@ -337,6 +413,18 @@ export const getAllPurchasesController = async (req, res) => {
         notes: purchase.notes,
         createdBy: purchase.createdBy ? { _id: purchase.createdBy._id, name: purchase.createdBy.name, email: purchase.createdBy.email } : null,
         updatedBy: purchase.updatedBy ? { _id: purchase.updatedBy._id, name: purchase.updatedBy.name, email: purchase.updatedBy.email } : null,
+        // Accountability - handledBy/selfie stay unset for a CENTRAL/
+        // SUPER_ADMIN purchase; processStatus stays null there too (out
+        // of EOD review's scope, see Purchase.modal.js).
+        handledBy: purchase.handledBy?.userId ? {
+          userId: purchase.handledBy.userId._id,
+          name: purchase.handledBy.name || purchase.handledBy.userId.name || "",
+          role: purchase.handledBy.role || "",
+        } : null,
+        selfie: purchase.selfie?.url ? { key: purchase.selfie.key, url: purchase.selfie.url, uploadedAt: purchase.selfie.uploadedAt } : null,
+        processStatus: purchase.processStatus || null,
+        reviewedBy: purchase.reviewedBy ? { _id: purchase.reviewedBy._id, name: purchase.reviewedBy.name, email: purchase.reviewedBy.email } : null,
+        reviewedAt: purchase.reviewedAt || null,
         isDeleted: purchase.isDeleted,
         createdAt: purchase.createdAt,
         updatedAt: purchase.updatedAt,
@@ -686,6 +774,8 @@ export const getAllPurchasesController = async (req, res) => {
         branchId: branchId || "ALL",
         startDate: startDate || null,
         endDate: endDate || null,
+        processStatus: processStatus || "ALL",
+        modelNumber: modelNumber || "",
       },
     });
   } catch (error) {

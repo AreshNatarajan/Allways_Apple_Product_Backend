@@ -84,18 +84,19 @@ const productSerialSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Real, client-settable input tax captured once at purchase time
-    // (not forced to 0) - most second-hand purchases still have no
-    // input GST, but a purchase from a GST-registered dealer legitimately
-    // can, so this is a genuine capture point, not a placeholder.
+    // Second-hand serialized purchases never carry an input GST value -
+    // createPurchase.controller.js always writes 0 here for every
+    // serialized unit, regardless of client input. GST on a serialized
+    // unit is margin-scheme, computed only at sale time from
+    // (sellingPrice - purchasePrice) x the current global rate (see
+    // createSale.controller.js) - it is never a purchase-time input tax
+    // the way it genuinely is for BatchStock's non-serialized purchases.
+    // Fields kept (not removed) only for historical records created
+    // before this rule, and for schema-shape parity with BatchStock.
     purchaseGstPercent: {
       type: Number,
       default: 0,
     },
-    // purchasePrice * purchaseGstPercent / 100, computed once at
-    // purchase time and stored permanently alongside it - never
-    // recomputed later, so a future GstConfig rate change can never
-    // retroactively alter a historical unit's recorded input tax.
     purchaseGstAmount: {
       type: Number,
       default: 0,

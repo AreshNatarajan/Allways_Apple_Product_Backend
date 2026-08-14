@@ -3,6 +3,7 @@ const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlyAdminRoles from '../../middleware/onlyAdminRoles.js';
+import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 
 // 1. Change the requires to modern imports
 
@@ -29,6 +30,16 @@ import { uploadSignature } from '../../middleware/uploadSignature.middleware.js'
 
 import { uploadPaymentEvidenceController } from '../../controllers/purchase/uploadPaymentEvidence.controller.js'
 
+// import accountability selfie (branch purchases)
+
+import { uploadPurchaseSelfieController } from '../../controllers/purchase/uploadPurchaseSelfie.controller.js'
+
+// import EOD (End of Day) approval review - reviewed directly from a
+// purchase's own detail page (AccountabilityCard.jsx), no separate
+// review-list endpoint.
+
+import { reviewPurchaseController } from '../../controllers/purchase/reviewPurchase.controller.js'
+
 router.post(
     "/upload-invoice",
     authMiddleware,
@@ -52,8 +63,13 @@ router.post(
 
 router.post('/check-serial', authMiddleware, checkSerialNumberController)
 
-// 2. Define the routes 
+router.post('/upload-selfie', authMiddleware, uploadPurchaseSelfieController)
+
+// 2. Define the routes
 router.get('/stats', authMiddleware, statsPurchaseController);
+// `/:id/review` is more specific than the generic `GET /:id` below, but
+// still must stay ahead of it for clarity/consistency.
+router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewPurchaseController);
 router.get('/:id', authMiddleware, getPurchaseByIdController);
 router.post('/create', authMiddleware, onlyAdminRoles, createPurchaseController);
 router.get('/', authMiddleware, getAllPurchasesController);

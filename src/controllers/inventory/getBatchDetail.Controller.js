@@ -6,6 +6,8 @@ import Branch from "../../models/Branch.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 const MOVEMENT_LABELS = {
     PURCHASE_RECEIVE_DIRECT: { label: "Purchase", description: "Received via direct branch purchase" },
     PURCHASE_RECEIVE_CENTRAL: { label: "Receive", description: "Received at branch from a central purchase" },
@@ -60,22 +62,39 @@ export const getBatchDetailController = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        const batches = batchStocks.map((b) => ({
-            batchId: b.batchId,
-            batchStockId: b._id,
-            batchNumber: b.batchNumber,
-            barcode: b.batchNumber,
-            purchaseNumber: b.purchaseId?.purchaseNumber || "-",
-            purchaseDate: b.purchaseId?.purchaseDate || b.createdAt,
-            quantity: b.quantity || 0,
-            availableQuantity: b.availableQuantity || 0,
-            soldQuantity: b.soldQuantity || 0,
-            damagedQuantity: b.damagedQuantity || 0,
-            purchasePrice: b.purchasePrice || 0,
-            sellingPrice: b.sellingPrice || 0,
-            gstApplicable: !!b.gstApplicable,
-            status: b.status,
-        }));
+        const batches = batchStocks.map((b) => {
+            // Real, additive, per-unit input GST captured at purchase
+            // time (never recalculated later - this batch's own frozen
+            // rate, unlike a non-serialized SALE, which always uses the
+            // current global rate instead - see createSale.controller.js).
+            const basePrice = b.purchasePrice || 0;
+            const purchaseGstPercent = b.purchaseGstPercent || 0;
+            const purchaseGstAmount = purchaseGstPercent > 0
+                ? round2((basePrice * purchaseGstPercent) / 100)
+                : 0;
+
+            return {
+                batchId: b.batchId,
+                batchStockId: b._id,
+                batchNumber: b.batchNumber,
+                barcode: b.batchNumber,
+                purchaseNumber: b.purchaseId?.purchaseNumber || "-",
+                purchaseDate: b.purchaseId?.purchaseDate || b.createdAt,
+                quantity: b.quantity || 0,
+                availableQuantity: b.availableQuantity || 0,
+                soldQuantity: b.soldQuantity || 0,
+                damagedQuantity: b.damagedQuantity || 0,
+                purchasePrice: basePrice,
+                purchaseGstPercent,
+                purchaseGstAmount,
+                // Base + GST, per unit - the actual landed cost of one
+                // unit of this batch.
+                purchaseTotalPrice: round2(basePrice + purchaseGstAmount),
+                sellingPrice: b.sellingPrice || 0,
+                gstApplicable: !!b.gstApplicable,
+                status: b.status,
+            };
+        });
 
         const totalQuantity = batches.reduce((sum, b) => sum + b.quantity, 0);
         const totalAvailableQuantity = batches.reduce((sum, b) => sum + b.availableQuantity, 0);
