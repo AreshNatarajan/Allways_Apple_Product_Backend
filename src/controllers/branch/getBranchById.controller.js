@@ -93,12 +93,15 @@ export const getBranchByIdController = async (req, res) => {
         // 4. SEPARATE ADMIN AND STAFF
         // ============================================================
         
-        let branchAdmin = null;
+        // A branch can have more than one Branch Admin now, so this
+        // collects all of them rather than keeping only the last one
+        // seen.
+        const branchAdmins = [];
         const staffUsers = [];
 
         users.forEach(user => {
             if (user.role === "BRANCH_ADMIN") {
-                branchAdmin = user;
+                branchAdmins.push(user);
             } else if (user.role === "STAFF") {
                 staffUsers.push(user);
             }
@@ -140,21 +143,21 @@ export const getBranchByIdController = async (req, res) => {
                 updatedBy: branch.updatedBy || null
             },
             users: {
-                admin: branchAdmin ? {
-                    _id: branchAdmin._id,
-                    name: branchAdmin.name,
-                    email: branchAdmin.email,
-                    phone: branchAdmin.phone || "",
-                    profilePhoto: branchAdmin.profilePhoto || null,
-                    role: branchAdmin.role,
-                    branchId: branchAdmin.branchId,
-                    isActive: branchAdmin.isActive,
-                    lastLoginAt: branchAdmin.lastLoginAt || null,
-                    createdAt: branchAdmin.createdAt,
-                    updatedAt: branchAdmin.updatedAt,
-                    createdBy: branchAdmin.createdBy || null,
-                    updatedBy: branchAdmin.updatedBy || null
-                } : null,
+                admins: branchAdmins.map(admin => ({
+                    _id: admin._id,
+                    name: admin.name,
+                    email: admin.email,
+                    phone: admin.phone || "",
+                    profilePhoto: admin.profilePhoto || null,
+                    role: admin.role,
+                    branchId: admin.branchId,
+                    isActive: admin.isActive,
+                    lastLoginAt: admin.lastLoginAt || null,
+                    createdAt: admin.createdAt,
+                    updatedAt: admin.updatedAt,
+                    createdBy: admin.createdBy || null,
+                    updatedBy: admin.updatedBy || null
+                })),
                 staff: staffUsers.map(staff => ({
                     _id: staff._id,
                     name: staff.name,

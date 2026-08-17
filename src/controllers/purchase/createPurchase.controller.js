@@ -8,7 +8,6 @@ import Batch from "../../models/Batch.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import PendingReceive from "../../models/PendingReceive.modal.js";
 import Vendor from "../../models/Vendor.modal.js";
-import User from "../../models/User.js";
 import { resolveActiveBranch } from "../../services/branchValidation.service.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { generatePurchaseInvoicePdf } from "../../services/purchase/generatePurchaseInvoicePdf.js";
@@ -145,10 +144,6 @@ export const createPurchaseController = async (req, res) => {
             paymentDetails = [],
             items = [],
             status = "COMPLETED",
-            // Accountability fields - required for a BRANCH_ADMIN
-            // purchase (see §3.5 below), optional for SUPER_ADMIN.
-            handledByUserId = null,
-            selfie = null,
         } = req.body;
         
         // ============================================================
@@ -226,77 +221,6 @@ export const createPurchaseController = async (req, res) => {
             }
             userBranchId = user.branchId;
             isDirectReceive = true;
-        }
-
-        // ============================================================
-        // 3.5 HANDLED-BY / SELFIE VALIDATION (accountability)
-        // ============================================================
-        // A BRANCH_ADMIN purchase happens at a shared counter terminal -
-        // createdBy alone (the logged-in user) doesn't say who actually
-        // handled this specific transaction, so both fields are mandatory
-        // here. A SUPER_ADMIN/CENTRAL purchase is a trusted, direct entry
-        // with no walk-in customer at a counter, so both stay optional.
-        // Never trust a client-submitted name/role for handledBy - always
-        // re-resolved fresh from the DB (same rule as vendorSnapshot).
-        let handledBySnapshot = null;
-        let selfieSnapshot = null;
-        let processStatus = null;
-
-        if (isBranchAdmin) {
-            if (!handledByUserId) {
-                await session.abortTransaction();
-                session.endSession();
-                return errorResponse(res, "Handled By user is required for a branch purchase", 400);
-            }
-            if (!selfie || !selfie.key || !selfie.url) {
-                await session.abortTransaction();
-                session.endSession();
-                return errorResponse(res, "A selfie capture is required for a branch purchase", 400);
-            }
-        }
-
-        if (handledByUserId) {
-            if (!mongoose.Types.ObjectId.isValid(handledByUserId)) {
-                await session.abortTransaction();
-                session.endSession();
-                return errorResponse(res, "Invalid Handled By user ID", 400);
-            }
-            const handledByUser = await User.findOne({
-                _id: handledByUserId,
-                isDeleted: false,
-            }).session(session);
-
-            if (!handledByUser || !handledByUser.isActive) {
-                await session.abortTransaction();
-                session.endSession();
-                return errorResponse(res, "Handled By user not found or inactive", 404);
-            }
-            if (
-                isBranchAdmin &&
-                (!handledByUser.branchId || handledByUser.branchId.toString() !== userBranchId.toString())
-            ) {
-                await session.abortTransaction();
-                session.endSession();
-                return errorResponse(res, "Handled By user does not belong to this branch", 400);
-            }
-
-            handledBySnapshot = {
-                userId: handledByUser._id,
-                name: handledByUser.name || "",
-                role: handledByUser.role || "",
-            };
-        }
-
-        if (selfie && selfie.key && selfie.url) {
-            selfieSnapshot = {
-                key: selfie.key,
-                url: selfie.url,
-                uploadedAt: new Date(),
-            };
-        }
-
-        if (isBranchAdmin) {
-            processStatus = "PENDING_REVIEW";
         }
 
         // ============================================================
@@ -822,11 +746,6 @@ export const createPurchaseController = async (req, res) => {
             items: processedItems,
             totalAmount: calculatedTotalAmount,
             notes: notes || "",
-            // Accountability - see §3.5 above for how these were resolved
-            // and validated (required for BRANCH, optional for SUPER_ADMIN).
-            handledBy: handledBySnapshot || undefined,
-            selfie: selfieSnapshot || undefined,
-            processStatus,
             createdBy: user._id,
             updatedBy: user._id,
         });

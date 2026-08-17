@@ -13,7 +13,6 @@ const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PENDING", "PARTIAL"];
 const PO_TYPE_VALUES = ["CENTRAL", "BRANCH"];
-const PROCESS_STATUS_VALUES = ["PENDING_REVIEW", "APPROVED", "REJECTED"];
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -104,7 +103,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllPurchasesController = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, processStatus, modelNumber } = req.query;
+    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber } = req.query;
     const user = req.user;
 
     // ============================================================
@@ -125,13 +124,6 @@ export const getAllPurchasesController = async (req, res) => {
     if (vendorId && vendorId !== "ALL" && mongoose.Types.ObjectId.isValid(vendorId)) {
       filter.vendorId = vendorId;
     }
-    // processStatus only ever exists on a BRANCH-flow purchase (see
-    // Purchase.modal.js) - filtering by it here implicitly only ever
-    // matches BRANCH purchases, no separate poType condition needed.
-    if (processStatus && processStatus !== "ALL" && PROCESS_STATUS_VALUES.includes(processStatus)) {
-      filter.processStatus = processStatus;
-    }
-
     // Business purchase date, not record-creation timestamp - matches
     // what "date filter" means on an ERP purchase list, and is what
     // purchaseTrend groups by below.
@@ -245,8 +237,6 @@ export const getAllPurchasesController = async (req, res) => {
         .populate("branchId", "name code")
         .populate("createdBy", "name email")
         .populate("updatedBy", "name email")
-        .populate("handledBy.userId", "name email")
-        .populate("reviewedBy", "name email")
         .populate("items.productId", "name productCode category isSerialized hsnCode description")
         .sort({ purchaseDate: -1, createdAt: -1 })
         .skip(skip)
@@ -413,18 +403,6 @@ export const getAllPurchasesController = async (req, res) => {
         notes: purchase.notes,
         createdBy: purchase.createdBy ? { _id: purchase.createdBy._id, name: purchase.createdBy.name, email: purchase.createdBy.email } : null,
         updatedBy: purchase.updatedBy ? { _id: purchase.updatedBy._id, name: purchase.updatedBy.name, email: purchase.updatedBy.email } : null,
-        // Accountability - handledBy/selfie stay unset for a CENTRAL/
-        // SUPER_ADMIN purchase; processStatus stays null there too (out
-        // of EOD review's scope, see Purchase.modal.js).
-        handledBy: purchase.handledBy?.userId ? {
-          userId: purchase.handledBy.userId._id,
-          name: purchase.handledBy.name || purchase.handledBy.userId.name || "",
-          role: purchase.handledBy.role || "",
-        } : null,
-        selfie: purchase.selfie?.url ? { key: purchase.selfie.key, url: purchase.selfie.url, uploadedAt: purchase.selfie.uploadedAt } : null,
-        processStatus: purchase.processStatus || null,
-        reviewedBy: purchase.reviewedBy ? { _id: purchase.reviewedBy._id, name: purchase.reviewedBy.name, email: purchase.reviewedBy.email } : null,
-        reviewedAt: purchase.reviewedAt || null,
         isDeleted: purchase.isDeleted,
         createdAt: purchase.createdAt,
         updatedAt: purchase.updatedAt,
@@ -774,7 +752,6 @@ export const getAllPurchasesController = async (req, res) => {
         branchId: branchId || "ALL",
         startDate: startDate || null,
         endDate: endDate || null,
-        processStatus: processStatus || "ALL",
         modelNumber: modelNumber || "",
       },
     });

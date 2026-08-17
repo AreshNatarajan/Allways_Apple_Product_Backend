@@ -137,22 +137,6 @@ export const manageUserController = async (req, res) => {
             }
         }
 
-        if (effectiveRole === "BRANCH_ADMIN") {
-            const existingAdmin = await User.findOne({
-                branchId: effectiveBranchId,
-                role: "BRANCH_ADMIN",
-                isDeleted: false,
-                _id: { $ne: id },
-            });
-            if (existingAdmin) {
-                return errorResponse(
-                    res,
-                    "This branch already has a Branch Admin assigned",
-                    409
-                );
-            }
-        }
-
         if (role !== undefined) {
             updateData.role = role;
         }

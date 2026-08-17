@@ -96,30 +96,15 @@ export const createAdminController = async (req, res) => {
         }
 
         // ============================================================
-        // 8. CHECK IF BRANCH ALREADY HAS AN ADMIN
-        // ============================================================
-        const existingAdmin = await User.findOne({
-            branchId: branchId,
-            role: "BRANCH_ADMIN",
-            isDeleted: false
-        });
-
-        if (existingAdmin) {
-            return errorResponse(
-                res,
-                "This branch already has a Branch Admin assigned",
-                409
-            );
-        }
-
-        // ============================================================
-        // 9. HASH PASSWORD
+        // 8. HASH PASSWORD
         // ============================================================
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
         // ============================================================
-        // 10. CREATE ADMIN USER
+        // 9. CREATE ADMIN USER - a branch can now have more than one
+        // Branch Admin, so this deliberately does not check for an
+        // existing one first.
         // ============================================================
         const admin = await User.create({
             name: name.trim(),
@@ -134,7 +119,7 @@ export const createAdminController = async (req, res) => {
         });
 
         // ============================================================
-        // 11. REMOVE SENSITIVE DATA FROM RESPONSE
+        // 10. REMOVE SENSITIVE DATA FROM RESPONSE
         // ============================================================
         const adminResponse = {
             _id: admin._id,
