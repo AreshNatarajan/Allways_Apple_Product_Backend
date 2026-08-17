@@ -43,7 +43,7 @@ export const getAllPurchasedProductsController = async (req, res) => {
 
         // ✅ Get purchased products with pagination
         const purchasedProducts = await ProductSerial.find(query)
-            .populate("productId", "name sku category sellingPrice")
+            .populate("productId", "name sku category")
             .populate("purchaseId", "purchaseNumber purchaseDate")
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -105,7 +105,6 @@ export const getAllPurchasedProductsController = async (req, res) => {
                 name: product.productId.name,
                 sku: product.productId.sku,
                 category: product.productId.category,
-                sellingPrice: product.productId.sellingPrice,
             } : null,
             // Each row here is one physical serialized unit - its own
             // description/images are the source of truth, never the

@@ -277,6 +277,28 @@ const saleItemSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Real input GST credit (ITC) for THIS line, frozen at sale time -
+    // non-serialized only, mirroring Purchase.items/BatchStock's own
+    // purchaseGstPercent (the batch's genuine purchase-time rate).
+    // Always 0 for a serialized line: second-hand purchases never carry
+    // an input GST value under the margin scheme (see
+    // ProductSerial.modal.js/createPurchase.controller.js). Distinct
+    // from gstPercent/gstAmount above, which are the OUTPUT rate/amount
+    // charged to the customer at sale time - this pair is never added
+    // to what the customer pays, it only offsets what's owed to the
+    // government (see getProfitLoss.controller.js's GST-payable math).
+    purchaseGstPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    purchaseGstAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     hsnCode: {
       type: String,
       default: "",
@@ -302,17 +324,20 @@ const saleItemSchema = new mongoose.Schema(
     // ----------------------------------------------------------
     // PROFIT
     // ----------------------------------------------------------
+    // Deliberately NOT min:0 - a genuine loss sale (clearance, damaged
+    // stock, a bad buy) computes a negative profit in
+    // createSale.controller.js and must still be allowed to save. A
+    // min:0 constraint here would throw a ValidationError on any loss
+    // sale and silently block it from being recorded at all.
 
     profit: {
       type: Number,
       default: 0,
-      min: 0,
     },
 
     profitAfterGst: {
       type: Number,
       default: 0,
-      min: 0,
     },
   },
   { _id: false },
@@ -407,16 +432,28 @@ const salesSchema = new mongoose.Schema(
       min: 0,
     },
 
-    totalProfit: {
+    // Sum of every non-serialized line's real input GST/ITC (see
+    // saleItemSchema.purchaseGstAmount) - always 0 for a sale made up
+    // entirely of serialized units. Lets reports (getProfitLoss's trend
+    // bucketing in particular) compute a period's true net GST payable
+    // without re-querying item-level detail.
+    totalPurchaseGstAmount: {
       type: Number,
       default: 0,
       min: 0,
     },
 
+    // Deliberately NOT min:0 - see the matching comment on
+    // saleItemSchema.profit above. A sale can legitimately net to an
+    // overall loss (e.g. every line sold at/below cost).
+    totalProfit: {
+      type: Number,
+      default: 0,
+    },
+
     totalProfitAfterGst: {
       type: Number,
       default: 0,
-      min: 0,
     },
 
     totalAmount: {
@@ -614,6 +651,12 @@ salesSchema.index({ isDeleted: 1, paymentStatus: 1 });
 salesSchema.index({ isDeleted: 1, status: 1 });
 // Supports the EOD review filter on a sale's own detail page.
 salesSchema.index({ isDeleted: 1, processStatus: 1 });
+// Supports getProfitLoss.controller.js's actual query shape - every
+// aggregation there filters on all four of these together
+// (isDeleted/status/branchId/saleDate-range), several times per
+// request. None of the single-field indexes above cover this compound
+// filter, so this is added specifically for that report's performance.
+salesSchema.index({ isDeleted: 1, status: 1, branchId: 1, saleDate: -1 });
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE

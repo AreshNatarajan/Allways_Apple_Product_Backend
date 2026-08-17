@@ -2,27 +2,31 @@
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import Branch from "../../models/Branch.modal.js";
-import Product from "../../models/Product.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 /**
- * 📊 PROFIT & LOSS REPORT
+ * 📊 PROFIT & LOSS REPORT (owner-friendly 5-step waterfall)
  *
- * Every profit figure comes straight from Sale.totalProfit /
- * Sale.totalProfitAfterGst / Sale.items[] - the same real, margin/GST-
- * aware numbers createSale.controller.js already computes and freezes
- * at the moment of each sale (see Sale.modal.js's SALE_FROZEN_FIELDS).
- * This controller never re-derives profit from sellingPrice-
- * purchasePrice; it only aggregates and presents what's already been
- * computed and stored, so a change here can never retroactively alter
- * a historical sale's own numbers.
+ * Sales -> Product Cost -> Profit Before Tax -> GST/Tax -> Final Profit.
+ * Every figure comes straight from fields already frozen on Sale /
+ * Sale.items[] at the moment of each sale (see Sale.modal.js) - this
+ * controller never re-derives profit from sellingPrice-purchasePrice,
+ * so a change here can never retroactively alter a historical sale's
+ * own numbers, and it can never diverge from what createSale.controller.js
+ * actually computed.
  *
- * Revenue/Cost/Discount/Profit always reconcile as
- * Revenue - Cost - Discount = Profit, using items.subtotal (pre-GST,
- * pre-discount) as "Revenue" and items.purchasePrice*quantity as
- * "Cost" - matching the waterfall's own grossSales/cogs convention.
- * GST is deliberately a separate, non-reconciling column (see the GST
- * payable section) so it's never mistaken for part of that chain.
+ * GST/Tax is a real, period-level net figure: output GST collected from
+ * customers (Sale.totalGstAmount) minus input GST credit already paid
+ * upstream at purchase time (Sale.totalPurchaseGstAmount, non-serialized
+ * only - serialized/second-hand sales never carry an input credit under
+ * the margin scheme). Input GST credit is pooled per period, not traced
+ * per sale-item, matching how real ITC accounting works - so it's
+ * computed once at the aggregate level here, never per-line.
+ *
+ * Sales and Product Cost are deliberately GST-INCLUSIVE (actual cash in/
+ * cash out), so Profit Before Tax minus GST/Tax always reconciles to the
+ * same real profit already frozen on every sale (Sale.totalProfit) - see
+ * getWaterfallTotals's own comment for the full worked-out reasoning.
  *
  * Only COMPLETED sales are included - DRAFT isn't a real transaction
  * yet, and CANCELLED never happened from a P&L standpoint.
@@ -62,86 +66,132 @@ const endOfToday = () => {
 // Waterfall totals for one date range - the single source both the
 // "current period" and "previous period" figures are computed from, so
 // the two can never be accidentally computed differently.
+//
+// "Sales" and "Product Cost" are deliberately GST-INCLUSIVE (the actual
+// cash that changed hands): Sales = Sale.totalAmount (what the customer
+// paid - for a non-serialized item that's base+output GST; for a
+// serialized/margin-scheme item GST is never added on top, so it's just
+// the base price, matching how finalAmount is built per type in
+// createSale.controller.js). Product Cost mirrors this on the purchase
+// side: base cost plus whatever input GST was actually paid to the
+// vendor at purchase time (Sale.totalPurchaseGstAmount - always 0 for
+// serialized units, since second-hand purchases never carry input GST).
+// GST/Tax is the separate, real remittance owed to the government this
+// period (output collected minus input credit). Subtracting it from
+// this GST-inclusive "Profit Before Tax" is what makes Final Profit land
+// exactly on the same number as summing every item's own true profit
+// (Sale.totalProfit) - GST is a pass-through by construction, so this
+// isn't a coincidence, it's the whole point of doing the math this way
+// instead of just re-displaying totalProfit directly: the waterfall
+// shows the OWNER where the government's cut actually comes out of,
+// while still reconciling to the one true profit figure.
 const getWaterfallTotals = async (match) => {
   const [agg] = await Sale.aggregate([
     { $match: match },
     {
       $group: {
         _id: null,
-        grossSales: { $sum: "$subtotalAmount" },
-        discounts: { $sum: "$totalDiscount" },
+        baseSales: { $sum: { $subtract: ["$subtotalAmount", "$totalDiscount"] } },
+        grossSales: { $sum: "$totalAmount" },
         gstCollected: { $sum: "$totalGstAmount" },
-        grossProfit: { $sum: "$totalProfit" },
-        netProfit: { $sum: "$totalProfitAfterGst" },
-        totalAmount: { $sum: "$totalAmount" },
+        inputGstCredit: { $sum: "$totalPurchaseGstAmount" },
+        baseProfit: { $sum: "$totalProfit" },
         salesCount: { $sum: 1 },
       },
     },
   ]);
 
-  const grossSales = agg?.grossSales || 0;
-  const discounts = agg?.discounts || 0;
-  const netRevenue = round2(grossSales - discounts);
-  const grossProfit = round2(agg?.grossProfit || 0);
-  const netProfit = round2(agg?.netProfit || 0);
-  const cogs = round2(netRevenue - grossProfit);
+  const baseSales = agg?.baseSales || 0;
+  const baseProfit = round2(agg?.baseProfit || 0);
+  const baseCost = round2(baseSales - baseProfit);
+  const gstCollected = round2(agg?.gstCollected || 0);
+  const inputGstCredit = round2(agg?.inputGstCredit || 0);
+
+  const sales = round2(agg?.grossSales || 0);
+  // Base cost plus the input GST actually paid at purchase time - see
+  // the function comment for why this (not the base-only cost) is the
+  // right counterpart to "sales" above.
+  const productCost = round2(baseCost + inputGstCredit);
+  const profitBeforeTax = round2(sales - productCost);
+  // Net GST payable for the period - output collected from customers
+  // minus input credit already paid upstream. Can be negative if a
+  // period's input credit outweighs its output (e.g. heavy restocking,
+  // light selling) - that's a real refundable position, not an error.
+  const gstTax = round2(gstCollected - inputGstCredit);
+  const finalProfit = round2(profitBeforeTax - gstTax);
 
   return {
-    grossSales: round2(grossSales),
-    discounts: round2(discounts),
-    netRevenue,
-    cogs,
-    grossProfit,
-    gstCollected: round2(agg?.gstCollected || 0),
-    netProfit,
+    sales,
+    productCost,
+    profitBeforeTax,
+    gstCollected,
+    inputGstCredit,
+    gstTax,
+    finalProfit,
     salesCount: agg?.salesCount || 0,
-    totalAmount: round2(agg?.totalAmount || 0),
-    grossMarginPercent: netRevenue > 0 ? round2((grossProfit / netRevenue) * 100) : 0,
-    netMarginPercent: netRevenue > 0 ? round2((netProfit / netRevenue) * 100) : 0,
+    profitBeforeTaxMarginPercent: sales > 0 ? round2((profitBeforeTax / sales) * 100) : 0,
+    finalProfitMarginPercent: sales > 0 ? round2((finalProfit / sales) * 100) : 0,
   };
 };
 
-const withComparison = (currentWaterfall, previousWaterfall) => {
+const withComparison = (current, previous) => {
   const result = {};
-  for (const key of ["grossSales", "discounts", "netRevenue", "cogs", "grossProfit", "gstCollected", "netProfit"]) {
+  for (const key of ["sales", "productCost", "profitBeforeTax", "gstTax", "finalProfit"]) {
     result[key] = {
-      value: currentWaterfall[key],
-      previousValue: previousWaterfall[key],
-      changePercent: changePercent(currentWaterfall[key], previousWaterfall[key]),
+      value: current[key],
+      previousValue: previous[key],
+      changePercent: changePercent(current[key], previous[key]),
     };
   }
-  result.grossMarginPercent = currentWaterfall.grossMarginPercent;
-  result.netMarginPercent = currentWaterfall.netMarginPercent;
-  result.previousGrossMarginPercent = previousWaterfall.grossMarginPercent;
-  result.previousNetMarginPercent = previousWaterfall.netMarginPercent;
+  result.profitBeforeTaxMarginPercent = current.profitBeforeTaxMarginPercent;
+  result.finalProfitMarginPercent = current.finalProfitMarginPercent;
+  result.previousProfitBeforeTaxMarginPercent = previous.profitBeforeTaxMarginPercent;
+  result.previousFinalProfitMarginPercent = previous.finalProfitMarginPercent;
   return result;
 };
 
 // All three granularities computed from one query, so the frontend's
 // daily/weekly/monthly toggle is instant (client-side) instead of
-// re-fetching per click.
+// re-fetching per click. Bucketed straight off document-level totals
+// (no item-level unwind) - same gross-Sales/gross-Cost math as
+// getWaterfallTotals (see its comment for why), just grouped by
+// day/week/month instead of the whole period.
 const getTrend = async (match) => {
-  const sales = await Sale.find(match).select("saleDate subtotalAmount totalDiscount totalProfit totalProfitAfterGst").lean();
+  const sales = await Sale.find(match)
+    .select("saleDate subtotalAmount totalDiscount totalProfit totalGstAmount totalPurchaseGstAmount totalAmount")
+    .lean();
 
   const buildBuckets = (keyFn) => {
     const buckets = new Map();
     for (const s of sales) {
       const key = keyFn(s.saleDate);
-      if (!buckets.has(key)) buckets.set(key, { period: key, netRevenue: 0, grossProfit: 0, netProfit: 0 });
+      if (!buckets.has(key)) {
+        buckets.set(key, { period: key, baseSales: 0, grossSales: 0, baseProfit: 0, gstCollected: 0, inputGstCredit: 0 });
+      }
       const bucket = buckets.get(key);
-      bucket.netRevenue += (s.subtotalAmount || 0) - (s.totalDiscount || 0);
-      bucket.grossProfit += s.totalProfit || 0;
-      bucket.netProfit += s.totalProfitAfterGst || 0;
+      bucket.baseSales += (s.subtotalAmount || 0) - (s.totalDiscount || 0);
+      bucket.grossSales += s.totalAmount || 0;
+      bucket.baseProfit += s.totalProfit || 0;
+      bucket.gstCollected += s.totalGstAmount || 0;
+      bucket.inputGstCredit += s.totalPurchaseGstAmount || 0;
     }
     return Array.from(buckets.values())
       .sort((a, b) => a.period.localeCompare(b.period))
-      .map((b) => ({
-        period: b.period,
-        netRevenue: round2(b.netRevenue),
-        cogs: round2(b.netRevenue - b.grossProfit),
-        grossProfit: round2(b.grossProfit),
-        netProfit: round2(b.netProfit),
-      }));
+      .map((b) => {
+        const baseCost = b.baseSales - b.baseProfit;
+        const sales = round2(b.grossSales);
+        const productCost = round2(baseCost + b.inputGstCredit);
+        const profitBeforeTax = round2(sales - productCost);
+        const gstTax = round2(b.gstCollected - b.inputGstCredit);
+        return {
+          period: b.period,
+          sales,
+          productCost,
+          profitBeforeTax,
+          gstTax,
+          finalProfit: round2(profitBeforeTax - gstTax),
+        };
+      });
   };
 
   return {
@@ -151,71 +201,13 @@ const getTrend = async (match) => {
   };
 };
 
-const getCategoryBreakdown = async (match) => {
-  const rows = await Sale.aggregate([
-    { $match: match },
-    { $unwind: "$items" },
-    {
-      $lookup: {
-        from: "products",
-        localField: "items.productId",
-        foreignField: "_id",
-        as: "product",
-      },
-    },
-    {
-      $group: {
-        _id: { $ifNull: [{ $arrayElemAt: ["$product.category", 0] }, "UNCATEGORIZED"] },
-        revenue: { $sum: "$items.finalAmount" },
-        profit: { $sum: "$items.profit" },
-        quantity: { $sum: { $ifNull: ["$items.quantity", 1] } },
-      },
-    },
-    { $sort: { revenue: -1 } },
-  ]);
-
-  return rows.map((r) => ({
-    category: r._id,
-    revenue: round2(r.revenue),
-    profit: round2(r.profit),
-    quantity: r.quantity,
-  }));
-};
-
-const getBranchComparison = async (match) => {
-  const rows = await Sale.aggregate([
-    { $match: match },
-    {
-      $group: {
-        _id: "$branchId",
-        netRevenue: { $sum: { $subtract: ["$subtotalAmount", "$totalDiscount"] } },
-        grossProfit: { $sum: "$totalProfit" },
-        netProfit: { $sum: "$totalProfitAfterGst" },
-      },
-    },
-    {
-      $lookup: { from: "branches", localField: "_id", foreignField: "_id", as: "branch" },
-    },
-    { $sort: { netRevenue: -1 } },
-  ]);
-
-  return rows.map((r) => ({
-    branchId: r._id,
-    branchName: r.branch?.[0]?.name || "Unknown Branch",
-    netRevenue: round2(r.netRevenue),
-    cogs: round2(r.netRevenue - r.grossProfit),
-    grossProfit: round2(r.grossProfit),
-    netProfit: round2(r.netProfit),
-  }));
-};
-
 // Serialized: one row per PHYSICAL UNIT sold (never grouped/collapsed
 // by product) - each unit has its own serial number, its own purchase
 // cost, and can legitimately differ from every other unit of the same
-// model. inputGstAmount comes straight from that exact unit's own
-// ProductSerial.purchaseGstAmount (frozen at purchase time) - most
-// second-hand units will show 0 here (no input tax paid), but a unit
-// genuinely bought from a GST-registered dealer carries a real value.
+// model. inputGstAmount is always 0 (no lookup needed) - a second-hand
+// unit sold under the margin scheme never carries an input GST/ITC
+// value; createSale.controller.js's serialized branch stamps this
+// explicitly at sale time.
 const getSerializedUnitPL = async (match) => {
   const rows = await Sale.aggregate([
     { $match: match },
@@ -227,14 +219,6 @@ const getSerializedUnitPL = async (match) => {
         localField: "items.productId",
         foreignField: "_id",
         as: "product",
-      },
-    },
-    {
-      $lookup: {
-        from: "productserials",
-        localField: "items.productSerialId",
-        foreignField: "_id",
-        as: "serial",
       },
     },
     {
@@ -256,7 +240,6 @@ const getSerializedUnitPL = async (match) => {
         gstPercent: "$items.gstPercent",
         gstAmount: "$items.gstAmount",
         profit: "$items.profit",
-        inputGstAmount: { $ifNull: [{ $arrayElemAt: ["$serial.purchaseGstAmount", 0] }, 0] },
       },
     },
     { $sort: { profit: -1 } },
@@ -278,11 +261,8 @@ const getSerializedUnitPL = async (match) => {
     gstApplicable: !!r.gstApplicable,
     gstPercent: r.gstPercent || 0,
     gstAmount: round2(r.gstAmount || 0),
-    inputGstAmount: round2(r.inputGstAmount || 0),
-    // Output GST minus input tax credit already paid on this unit at
-    // purchase time - the real amount attributable to the government
-    // for this specific sale, never just the output figure alone.
-    netGstPayable: round2((r.gstAmount || 0) - (r.inputGstAmount || 0)),
+    inputGstAmount: 0,
+    netGstPayable: round2(r.gstAmount || 0),
     profit: round2(r.profit || 0),
     marginPercent: r.sellingPrice > 0 ? round2((r.profit / r.sellingPrice) * 100) : 0,
   }));
@@ -291,11 +271,14 @@ const getSerializedUnitPL = async (match) => {
 // Non-serialized: real inventory is tracked per-batch (different
 // batches of the same product can carry different purchase costs), so
 // each batch gets its own P&L row rather than collapsing every batch of
-// a product together. inputGstAmount needs no lookup - the output rate
-// on a non-serialized sale IS the purchase-time rate carried through
-// unchanged (createSale.controller.js's non-serialized branch never
-// re-derives it), so it's computable straight from the sale item's own
-// purchasePrice/quantity/gstPercent.
+// a product together. inputGstAmount sums items.purchaseGstAmount - the
+// batch's own real, frozen purchase-time input rate (captured by
+// createSale.controller.js at sale time) - never re-derived from
+// items.gstPercent, which is the sale's OUTPUT rate and can legitimately
+// differ from the input rate if the standard GST rate changed between
+// that batch's purchase and its sale. Sales made before this field
+// existed default to 0 here (same effective behavior as before, not a
+// regression - see Sale.modal.js's migration note).
 const getNonSerializedBatchPL = async (match) => {
   const rows = await Sale.aggregate([
     { $match: match },
@@ -311,14 +294,7 @@ const getNonSerializedBatchPL = async (match) => {
         cost: { $sum: { $multiply: ["$items.purchasePrice", { $ifNull: ["$items.quantity", 0] }] } },
         discount: { $sum: "$items.discount" },
         gstAmount: { $sum: "$items.gstAmount" },
-        inputGstAmount: {
-          $sum: {
-            $divide: [
-              { $multiply: ["$items.purchasePrice", { $ifNull: ["$items.quantity", 0] }, "$items.gstPercent"] },
-              100,
-            ],
-          },
-        },
+        inputGstAmount: { $sum: { $ifNull: ["$items.purchaseGstAmount", 0] } },
         profit: { $sum: "$items.profit" },
       },
     },
@@ -344,114 +320,71 @@ const getNonSerializedBatchPL = async (match) => {
   }));
 };
 
-// Output GST reuses the exact figure the waterfall's "GST Collected"
-// line already sums (Sale.totalGstAmount) - never a second,
-// independently-computed source. Input GST credit is tax already paid
-// upstream at purchase time, attributable to the units actually sold in
-// this period. Net payable = output - input, which is the real amount
-// owed to the government (standard GST/VAT input-credit mechanics, not
-// a simplification) - not just gross GST collected from customers.
-const getGstPayableSummary = async (match, outputGst) => {
-  const [nonSerializedAgg] = await Sale.aggregate([
-    { $match: match },
-    { $unwind: "$items" },
-    { $match: { "items.isSerialized": false } },
-    {
-      $group: {
-        _id: null,
-        inputGst: {
-          $sum: {
-            $divide: [
-              { $multiply: ["$items.purchasePrice", { $ifNull: ["$items.quantity", 0] }, "$items.gstPercent"] },
-              100,
-            ],
-          },
-        },
-      },
-    },
-  ]);
-
-  const [serializedAgg] = await Sale.aggregate([
-    { $match: match },
-    { $unwind: "$items" },
-    { $match: { "items.isSerialized": true } },
-    {
-      $lookup: {
-        from: "productserials",
-        localField: "items.productSerialId",
-        foreignField: "_id",
-        as: "serial",
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        inputGst: { $sum: { $ifNull: [{ $arrayElemAt: ["$serial.purchaseGstAmount", 0] }, 0] } },
-      },
-    },
-  ]);
+// Simple owner-facing GST summary: Used Product Tax (serialized output,
+// margin-scheme) / New Product GST (non-serialized output) / Purchase
+// Tax Credit (input, non-serialized only) / Total (net payable).
+// usedProductTax/newProductGst are summed straight from the already-
+// fetched serializedUnitPL/nonSerializedBatchPL rows - no extra query.
+// outputGst/inputGstCredit are passed in from the same document-level
+// sums getWaterfallTotals already computed, so this always reconciles
+// exactly with the waterfall's own GST/Tax step. Only the rate breakdown
+// (for the "view details" modal) needs its own query.
+const getGstPayableSummary = async (match, { outputGst, inputGstCredit, serializedRows, nonSerializedRows }) => {
+  const usedProductTax = round2(serializedRows.reduce((sum, r) => sum + (r.gstAmount || 0), 0));
+  const newProductGst = round2(nonSerializedRows.reduce((sum, r) => sum + (r.gstAmount || 0), 0));
 
   const rateBreakdownRows = await Sale.aggregate([
     { $match: match },
     { $unwind: "$items" },
     { $match: { "items.gstAmount": { $gt: 0 } } },
-    {
-      $group: {
-        _id: "$items.gstPercent",
-        amount: { $sum: "$items.gstAmount" },
-      },
-    },
+    { $group: { _id: "$items.gstPercent", amount: { $sum: "$items.gstAmount" } } },
     { $sort: { _id: 1 } },
   ]);
 
-  const inputGstCredit = round2((nonSerializedAgg?.inputGst || 0) + (serializedAgg?.inputGst || 0));
-
   return {
+    usedProductTax,
+    newProductGst,
     outputGst: round2(outputGst),
-    inputGstCredit,
+    purchaseTaxCredit: round2(inputGstCredit),
     netPayable: round2(outputGst - inputGstCredit),
     rateBreakdown: rateBreakdownRows.map((r) => ({ rate: r._id || 0, amount: round2(r.amount) })),
   };
 };
 
-// One combined per-product ranking across BOTH serialized and
-// non-serialized sales (every batch/unit of a product collapsed into
-// one row) - purely for the "most profitable products" highlight list,
-// distinct from the per-unit/per-batch tables above which intentionally
-// keep every row separate.
-const getProductRanking = async (match) => {
-  const rows = await Sale.aggregate([
-    { $match: match },
-    { $unwind: "$items" },
-    {
-      $group: {
-        _id: "$items.productId",
-        productName: { $first: "$items.productName" },
-        isSerialized: { $first: "$items.isSerialized" },
-        revenue: { $sum: "$items.subtotal" },
-        profit: { $sum: "$items.profit" },
-      },
+// Serialized-vs-non-serialized comparison - built entirely from the
+// already-fetched per-unit/per-batch rows (JS reduce), no extra query.
+const buildTypeComparison = (serializedRows, nonSerializedRows) => {
+  const serializedTotals = serializedRows.reduce(
+    (acc, r) => {
+      acc.unitsSold += 1;
+      acc.revenue += r.sellingPrice - r.discount;
+      acc.cost += r.purchasePrice;
+      acc.profit += r.profit;
+      return acc;
     },
-    { $sort: { profit: -1 } },
-  ]);
+    { unitsSold: 0, revenue: 0, cost: 0, profit: 0 }
+  );
 
-  const ranked = rows.map((r) => ({
-    productId: r._id,
-    productName: r.productName || "Unknown Product",
-    type: r.isSerialized ? "Serialized" : "Batch",
-    profit: round2(r.profit),
-    marginPercent: r.revenue > 0 ? round2((r.profit / r.revenue) * 100) : 0,
-  }));
+  const nonSerializedTotals = nonSerializedRows.reduce(
+    (acc, r) => {
+      acc.unitsSold += r.quantitySold || 0;
+      acc.revenue += r.revenue;
+      acc.cost += r.cogs;
+      acc.profit += r.profit;
+      return acc;
+    },
+    { unitsSold: 0, revenue: 0, cost: 0, profit: 0 }
+  );
 
-  const topProfitable = ranked.slice(0, 8);
-  const highestProfit = ranked.length > 0 ? ranked[0] : null;
-  const byMargin = [...ranked].sort((a, b) => b.marginPercent - a.marginPercent);
-  const highestMargin = byMargin.length > 0 ? byMargin[0] : null;
-  const lowestMargin = byMargin.length > 0 ? byMargin[byMargin.length - 1] : null;
-  const lossMakers = ranked.filter((r) => r.profit < 0).sort((a, b) => a.profit - b.profit);
-  const lossMaking = lossMakers.length > 0 ? lossMakers[0] : null;
+  const finalize = (t) => ({
+    unitsSold: t.unitsSold,
+    revenue: round2(t.revenue),
+    cost: round2(t.cost),
+    profit: round2(t.profit),
+    marginPercent: t.revenue > 0 ? round2((t.profit / t.revenue) * 100) : 0,
+  });
 
-  return { topProfitable, highlights: { highestProfit, highestMargin, lowestMargin, lossMaking } };
+  return { serialized: finalize(serializedTotals), nonSerialized: finalize(nonSerializedTotals) };
 };
 
 export const getProfitLossController = async (req, res) => {
@@ -509,32 +442,26 @@ export const getProfitLossController = async (req, res) => {
     // ============================================================
     // RUN EVERYTHING IN PARALLEL
     // ============================================================
-    const [
-      currentWaterfall,
-      previousWaterfall,
-      trend,
-      categoryBreakdown,
-      branchComparison,
-      serializedUnitPL,
-      nonSerializedBatchPL,
-      productRanking,
-    ] = await Promise.all([
+    const [currentWaterfallTotals, previousWaterfallTotals, trend, serializedUnitPL, nonSerializedBatchPL] = await Promise.all([
       getWaterfallTotals(currentMatch),
       getWaterfallTotals(previousMatch),
       getTrend(currentMatch),
-      getCategoryBreakdown(currentMatch),
-      // Branch comparison only makes sense when not already scoped to
-      // one branch (SUPER_ADMIN viewing "All Branches").
-      isSuperAdmin && !branchObjectId ? getBranchComparison(currentMatch) : Promise.resolve([]),
       getSerializedUnitPL(currentMatch),
       getNonSerializedBatchPL(currentMatch),
-      getProductRanking(currentMatch),
     ]);
 
-    const waterfall = withComparison(currentWaterfall, previousWaterfall);
-    const gstPayable = await getGstPayableSummary(currentMatch, currentWaterfall.gstCollected);
+    const waterfall = withComparison(currentWaterfallTotals, previousWaterfallTotals);
 
-    const totalItemsSold = categoryBreakdown.reduce((sum, c) => sum + c.quantity, 0);
+    const gstPayable = await getGstPayableSummary(currentMatch, {
+      outputGst: currentWaterfallTotals.gstCollected,
+      inputGstCredit: currentWaterfallTotals.inputGstCredit,
+      serializedRows: serializedUnitPL,
+      nonSerializedRows: nonSerializedBatchPL,
+    });
+
+    const typeComparison = buildTypeComparison(serializedUnitPL, nonSerializedBatchPL);
+
+    const totalItemsSold = serializedUnitPL.length + nonSerializedBatchPL.reduce((sum, r) => sum + (r.quantitySold || 0), 0);
 
     return successResponse(res, "Profit & Loss report retrieved successfully", {
       period: { startDate: start, endDate: end },
@@ -543,17 +470,15 @@ export const getProfitLossController = async (req, res) => {
       branches,
       waterfall,
       trend,
-      categoryBreakdown,
-      branchComparison,
+      typeComparison,
       serializedUnitPL,
       nonSerializedBatchPL,
       gstPayable,
-      productRanking,
       summary: {
-        totalSales: currentWaterfall.salesCount,
+        totalSales: currentWaterfallTotals.salesCount,
         totalItemsSold,
-        avgOrderValue: currentWaterfall.salesCount > 0 ? round2(currentWaterfall.netRevenue / currentWaterfall.salesCount) : 0,
-        avgMarginPercent: currentWaterfall.grossMarginPercent,
+        avgOrderValue: currentWaterfallTotals.salesCount > 0 ? round2(currentWaterfallTotals.sales / currentWaterfallTotals.salesCount) : 0,
+        avgMarginPercent: currentWaterfallTotals.finalProfitMarginPercent,
       },
     });
   } catch (error) {

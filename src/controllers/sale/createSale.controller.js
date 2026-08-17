@@ -16,6 +16,8 @@ import {
     errorResponse,
 } from "../../utils/responseHandler.js";
 
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 export const createSaleController = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -168,6 +170,7 @@ export const createSaleController = async (req, res) => {
         let calculatedSubtotalAmount = 0;
         let calculatedTotalDiscount = 0;
         let calculatedTotalGstAmount = 0;
+        let calculatedTotalPurchaseGstAmount = 0;
         let calculatedTotalProfit = 0;
         let calculatedTotalProfitAfterGst = 0;
         let calculatedTotalAmount = 0;
@@ -241,6 +244,7 @@ export const createSaleController = async (req, res) => {
             
             let purchasePrice = 0;
             let gstAmount = 0;
+            let itemPurchaseGstAmount = 0;
             let profit = 0;
             let profitAfterGst = 0;
             let subtotal = 0;
@@ -357,6 +361,12 @@ export const createSaleController = async (req, res) => {
                     gstApplicable: gstApplicable,
                     gstPercent: gstApplicable ? gstPercent : 0,
                     gstAmount: gstAmount,
+                    // No input GST/ITC for a second-hand serialized
+                    // purchase under the margin scheme - always 0 here,
+                    // explicit rather than relying on the schema default
+                    // for clarity (see Sale.modal.js's field comment).
+                    purchaseGstPercent: 0,
+                    purchaseGstAmount: 0,
                     hsnCode: hsnCode,
                     discount: discount,
                     subtotal: subtotal,
@@ -443,6 +453,17 @@ export const createSaleController = async (req, res) => {
                 purchasePrice = batchStock.purchasePrice || 0;
                 gstApplicable = true; // non-serialized is always GST-applicable per business rule
                 gstPercent = gstConfig.standardRate || 0;
+                // Real input GST/ITC for this line - THIS is genuinely
+                // the batch's own frozen purchase-time rate (unlike
+                // gstPercent above, the sale's output rate). Captured
+                // here, once, at sale time, so P&L never has to guess it
+                // later from the wrong (output) rate - see
+                // getProfitLoss.controller.js's GST-payable math.
+                const linePurchaseGstPercent = batchStock.purchaseGstPercent || 0;
+                const linePurchaseGstAmount = linePurchaseGstPercent > 0
+                    ? (purchasePrice * quantity * linePurchaseGstPercent) / 100
+                    : 0;
+                itemPurchaseGstAmount = round2(linePurchaseGstAmount);
 
                 // BatchStock doesn't itself carry purchaseNumber (only
                 // purchaseId) - one lightweight lookup for traceability,
@@ -507,6 +528,8 @@ export const createSaleController = async (req, res) => {
                     gstApplicable: true,
                     gstPercent: gstPercent,
                     gstAmount: gstAmount,
+                    purchaseGstPercent: linePurchaseGstPercent,
+                    purchaseGstAmount: round2(linePurchaseGstAmount),
                     hsnCode: hsnCode,
                     discount: discount,
                     subtotal: subtotal,
@@ -520,6 +543,7 @@ export const createSaleController = async (req, res) => {
             calculatedSubtotalAmount += subtotal;
             calculatedTotalDiscount += discount;
             calculatedTotalGstAmount += gstAmount;
+            calculatedTotalPurchaseGstAmount += itemPurchaseGstAmount;
             calculatedTotalProfit += profit;
             calculatedTotalProfitAfterGst += profitAfterGst;
             calculatedTotalAmount += finalAmount;
@@ -566,6 +590,7 @@ export const createSaleController = async (req, res) => {
                 subtotalAmount: calculatedSubtotalAmount,
                 totalDiscount: calculatedTotalDiscount,
                 totalGstAmount: calculatedTotalGstAmount,
+                totalPurchaseGstAmount: calculatedTotalPurchaseGstAmount,
                 totalProfit: calculatedTotalProfit,
                 totalProfitAfterGst: calculatedTotalProfitAfterGst,
                 totalAmount: calculatedTotalAmount,
