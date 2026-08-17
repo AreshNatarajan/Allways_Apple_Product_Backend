@@ -33,9 +33,9 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  *
  * 🔍 Query params: startDate, endDate (default: current month),
  * branchId (SUPER_ADMIN only).
- * 👤 Role: SUPER_ADMIN sees all branches or one via branchId;
- * BRANCH_ADMIN is always forced to their own branch (route also blocks
- * STAFF entirely - see reports.router.js).
+ * 👤 Role: any authenticated role can call this. SUPER_ADMIN sees all
+ * branches or one via branchId; BRANCH_ADMIN and STAFF are always
+ * forced to their own branch.
  */
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;

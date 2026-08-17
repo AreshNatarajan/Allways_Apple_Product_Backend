@@ -34,9 +34,9 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  *
  * 🔍 Query params: startDate, endDate (optional - all-time if both
  * omitted), branchId (SUPER_ADMIN only).
- * 👤 Role: SUPER_ADMIN sees all branches or one via branchId;
- * BRANCH_ADMIN is always forced to their own branch (route also blocks
- * STAFF - see reports.router.js, same gate as Profit & Loss).
+ * 👤 Role: any authenticated role can call this. SUPER_ADMIN sees all
+ * branches or one via branchId; BRANCH_ADMIN and STAFF are always
+ * forced to their own branch.
  */
 
 const buildDateRange = (startDate, endDate) => {
