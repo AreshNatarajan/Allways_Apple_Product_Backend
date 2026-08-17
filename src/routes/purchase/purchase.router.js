@@ -2,7 +2,6 @@ import express from 'express';
 const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
-import onlyAdminRoles from '../../middleware/onlyAdminRoles.js';
 
 // 1. Change the requires to modern imports
 
@@ -55,7 +54,10 @@ router.post('/check-serial', authMiddleware, checkSerialNumberController)
 // 2. Define the routes
 router.get('/stats', authMiddleware, statsPurchaseController);
 router.get('/:id', authMiddleware, getPurchaseByIdController);
-router.post('/create', authMiddleware, onlyAdminRoles, createPurchaseController);
+// Any authenticated role (incl. STAFF) can create a purchase - matches
+// createPurchase.controller.js's isBranchFlow handling, which now treats
+// STAFF the same as BRANCH_ADMIN (direct purchase into their own branch).
+router.post('/create', authMiddleware, createPurchaseController);
 router.get('/', authMiddleware, getAllPurchasesController);
 
 

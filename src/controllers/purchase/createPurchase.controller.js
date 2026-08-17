@@ -123,7 +123,11 @@ export const createPurchaseController = async (req, res) => {
         
         const user = req.user;
         const isSuperAdmin = user?.role === "SUPER_ADMIN";
-        const isBranchAdmin = user?.role === "BRANCH_ADMIN";
+        // Everyone who isn't SUPER_ADMIN (BRANCH_ADMIN and STAFF alike)
+        // follows the same direct-branch-purchase flow: their own
+        // branchId, stock enters immediately, no PendingReceive step -
+        // the CENTRAL/pending-receive flow below is SUPER_ADMIN-only.
+        const isBranchFlow = !isSuperAdmin;
         
         // ============================================================
         // 1. EXTRACT PAYLOAD
@@ -213,7 +217,7 @@ export const createPurchaseController = async (req, res) => {
         let userBranchId = null;
         let isDirectReceive = false;
         
-        if (isBranchAdmin) {
+        if (isBranchFlow) {
             if (!user.branchId) {
                 await session.abortTransaction();
                 session.endSession();
@@ -231,7 +235,7 @@ export const createPurchaseController = async (req, res) => {
         const branchIds = new Set();
         for (const item of items) {
             let branchId = item.branchId;
-            if (isBranchAdmin) {
+            if (isBranchFlow) {
                 branchId = userBranchId;
             }
             if (branchId) {
@@ -315,7 +319,7 @@ export const createPurchaseController = async (req, res) => {
                 }
                 branchName = branch.name || "";
                 branchCode = branch.code || branch._id.toString().slice(-3).toUpperCase();
-            } else if (isBranchAdmin) {
+            } else if (isBranchFlow) {
                 destinationBranchId = userBranchId;
                 const branch = branchMap.get(destinationBranchId.toString());
                 branchName = branch?.name || "";
