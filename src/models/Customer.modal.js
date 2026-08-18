@@ -30,12 +30,6 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
 
-    alternatePhone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     email: {
       type: String,
       default: "",
@@ -52,40 +46,9 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
 
-    city: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    state: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    country: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    pincode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     // =========================
     // BUSINESS INFORMATION
     // =========================
-    customerCode: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: undefined, // omit entirely rather than store "" (keeps the partial unique index below sparse-correct)
-    },
-
     // GST is OPTIONAL - never required, format validated only when
     // provided (enforced in the controllers, not here).
     gstNumber: {
@@ -195,21 +158,6 @@ customerSchema.index(
     partialFilterExpression: {
       isDeleted: false,
       gstNumber: { $gt: "" },
-    },
-  }
-);
-
-/**
- * customerCode is optional, but when provided must be unique per
- * branch.
- */
-customerSchema.index(
-  { branchId: 1, customerCode: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      isDeleted: false,
-      customerCode: { $exists: true, $type: "string" },
     },
   }
 );

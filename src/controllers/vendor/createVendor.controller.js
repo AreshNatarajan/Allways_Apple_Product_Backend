@@ -8,7 +8,6 @@ import {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{7,15}$/;
 const GST_REGEX = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
-const PAN_REGEX = /^[A-Z]{5}\d{4}[A-Z]$/;
 
 // Vendor is a GLOBAL master - never accepts/derives a branchId, and the
 // same vendor is shared across every branch. Do not reintroduce
@@ -18,18 +17,10 @@ export const createVendorController = async (req, res) => {
         const {
             name,
             companyName,
-            contactPerson,
             phone,
-            alternatePhone,
             email,
             address,
-            city,
-            state,
-            country,
-            pincode,
-            vendorCode,
             gstNumber,
-            panNumber,
             notes,
         } = req.body;
 
@@ -39,24 +30,16 @@ export const createVendorController = async (req, res) => {
         }
 
         // Validate optional fields' formats, only when provided
-        if (email?.trim() && !EMAIL_REGEX.test(email.trim())) {
-            return errorResponse(res, "Invalid email format", 400);
-        }
-
         if (phone?.trim() && !PHONE_REGEX.test(phone.trim())) {
             return errorResponse(res, "Invalid phone number", 400);
         }
 
-        if (alternatePhone?.trim() && !PHONE_REGEX.test(alternatePhone.trim())) {
-            return errorResponse(res, "Invalid alternate phone number", 400);
+        if (email?.trim() && !EMAIL_REGEX.test(email.trim())) {
+            return errorResponse(res, "Invalid email format", 400);
         }
 
         if (gstNumber?.trim() && !GST_REGEX.test(gstNumber.trim().toUpperCase())) {
             return errorResponse(res, "Invalid GST number format", 400);
-        }
-
-        if (panNumber?.trim() && !PAN_REGEX.test(panNumber.trim().toUpperCase())) {
-            return errorResponse(res, "Invalid PAN number format", 400);
         }
 
         // Check duplicate vendor name (global, case-insensitive)
@@ -80,25 +63,14 @@ export const createVendorController = async (req, res) => {
             }
         }
 
-        // Check duplicate email (global, only when provided)
+        // Check duplicate email (global)
         if (email?.trim()) {
             const existingEmail = await Vendor.findOne({
                 email: email.trim().toLowerCase(),
                 isDeleted: false,
             });
             if (existingEmail) {
-                return errorResponse(res, `Email "${email}" already exists`, 409);
-            }
-        }
-
-        // Check duplicate vendor code (global, only when provided)
-        if (vendorCode?.trim()) {
-            const existingCode = await Vendor.findOne({
-                vendorCode: vendorCode.trim().toUpperCase(),
-                isDeleted: false,
-            });
-            if (existingCode) {
-                return errorResponse(res, `Vendor code "${vendorCode}" already exists`, 409);
+                return errorResponse(res, `A vendor with email "${email}" already exists`, 409);
             }
         }
 
@@ -106,18 +78,10 @@ export const createVendorController = async (req, res) => {
         const newVendor = await Vendor.create({
             name: name.trim(),
             companyName: companyName?.trim() || "",
-            contactPerson: contactPerson?.trim() || "",
             phone: phone?.trim() || "",
-            alternatePhone: alternatePhone?.trim() || "",
             email: email?.trim().toLowerCase() || "",
             address: address?.trim() || "",
-            city: city?.trim() || "",
-            state: state?.trim() || "",
-            country: country?.trim() || "",
-            pincode: pincode?.trim() || "",
-            vendorCode: vendorCode?.trim() ? vendorCode.trim().toUpperCase() : undefined,
             gstNumber: gstNumber?.trim().toUpperCase() || "",
-            panNumber: panNumber?.trim().toUpperCase() || "",
             notes: notes?.trim() || "",
             createdBy: req.user._id,
             createdByRole: req.user.role,

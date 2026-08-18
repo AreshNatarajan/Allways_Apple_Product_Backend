@@ -46,7 +46,6 @@ export const getCustomerForTablePagination = async (req, res) => {
       const trimmedSearch = search.trim();
       filter.$or = [
         { name: { $regex: trimmedSearch, $options: "i" } },
-        { customerCode: { $regex: trimmedSearch, $options: "i" } },
         { mobile: { $regex: trimmedSearch, $options: "i" } },
         { email: { $regex: trimmedSearch, $options: "i" } },
         { gstNumber: { $regex: trimmedSearch, $options: "i" } },

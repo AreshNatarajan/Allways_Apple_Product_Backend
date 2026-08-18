@@ -82,8 +82,22 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllSalesController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search, status, paymentStatus, customerId, branchId, startDate, endDate, processStatus, modelNumber } = req.query;
+        const { search, status, paymentStatus, customerId, branchId, startDate, endDate, processStatus, modelNumber, sortBy, sortOrder } = req.query;
         const user = req.user;
+
+        // ---- sort ----
+        // Mirrors getAllPurchasesController exactly: only these two
+        // columns are sortable from the list UI. Customer sorts by
+        // customerSnapshot.name (a plain string already stored on every
+        // sale document) rather than the populated customerId ref, so
+        // it stays a single indexed find().sort() - no aggregation
+        // needed, and it sorts consistently even for sales whose
+        // customer was later deleted.
+        const order = sortOrder === "asc" ? 1 : -1;
+        const sortSpec =
+            sortBy === "customer"
+                ? { "customerSnapshot.name": order, saleDate: -1 }
+                : { saleDate: order, createdAt: -1 };
 
         // ============================================================
         // 1. BUILD FILTER
@@ -227,7 +241,7 @@ export const getAllSalesController = async (req, res) => {
                 .populate("updatedBy", "name email")
                 .populate("handledBy.userId", "name email")
                 .populate("reviewedBy", "name email")
-                .sort({ saleDate: -1, createdAt: -1 })
+                .sort(sortSpec)
                 .skip(skip)
                 .limit(limit),
             Sale.find(filter).lean(),

@@ -20,14 +20,8 @@ export const createCustomerController = async (req, res) => {
         const {
             name,
             mobile,
-            alternatePhone,
             email,
             address,
-            city,
-            state,
-            country,
-            pincode,
-            customerCode,
             gstNumber,
             notes,
         } = req.body;
@@ -59,10 +53,6 @@ export const createCustomerController = async (req, res) => {
 
         if (mobile?.trim() && !PHONE_REGEX.test(mobile.trim())) {
             return errorResponse(res, "Invalid phone number", 400);
-        }
-
-        if (alternatePhone?.trim() && !PHONE_REGEX.test(alternatePhone.trim())) {
-            return errorResponse(res, "Invalid alternate phone number", 400);
         }
 
         // GST is OPTIONAL - only validated/checked for duplicates when provided
@@ -118,33 +108,12 @@ export const createCustomerController = async (req, res) => {
             }
         }
 
-        if (customerCode?.trim()) {
-            const existingCode = await Customer.findOne({
-                branchId: branchCheck.branch._id,
-                customerCode: customerCode.trim().toUpperCase(),
-                isDeleted: false,
-            });
-            if (existingCode) {
-                return errorResponse(
-                    res,
-                    `Customer code "${customerCode}" already exists in this branch`,
-                    409
-                );
-            }
-        }
-
         const customer = await Customer.create({
             branchId: branchCheck.branch._id,
             name: name.trim(),
             mobile: mobile?.trim() || "",
-            alternatePhone: alternatePhone?.trim() || "",
             email: email?.trim().toLowerCase() || "",
             address: address?.trim() || "",
-            city: city?.trim() || "",
-            state: state?.trim() || "",
-            country: country?.trim() || "",
-            pincode: pincode?.trim() || "",
-            customerCode: customerCode?.trim() ? customerCode.trim().toUpperCase() : undefined,
             gstNumber: gstNumber?.trim().toUpperCase() || "",
             notes: notes?.trim() || "",
             createdBy: loggedInUser._id,

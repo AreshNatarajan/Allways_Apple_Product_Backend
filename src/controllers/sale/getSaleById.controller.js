@@ -19,7 +19,7 @@ export const getSaleByIdController = async (req, res) => {
         }
 
         const sale = await Sale.findById(id)
-            .populate("customerId", "name mobile alternatePhone email address city state country pincode gstNumber customerCode")
+            .populate("customerId", "name mobile email address gstNumber")
             .populate("branchId", "name code email phones address bankDetails upiQrImage googleMapUrl")
             .populate("createdBy", "name email role")
             .populate("updatedBy", "name email role")

@@ -38,14 +38,8 @@ export const updateCustomerController = async (req, res) => {
     const {
       name,
       mobile,
-      alternatePhone,
       email,
       address,
-      city,
-      state,
-      country,
-      pincode,
-      customerCode,
       gstNumber,
       notes,
       isActive,
@@ -92,14 +86,6 @@ export const updateCustomerController = async (req, res) => {
 
     if (mobile !== undefined && mobile?.trim() && !PHONE_REGEX.test(mobile.trim())) {
       return errorResponse(res, "Invalid phone number", 400);
-    }
-
-    if (
-      alternatePhone !== undefined &&
-      alternatePhone?.trim() &&
-      !PHONE_REGEX.test(alternatePhone.trim())
-    ) {
-      return errorResponse(res, "Invalid alternate phone number", 400);
     }
 
     if (
@@ -160,35 +146,11 @@ export const updateCustomerController = async (req, res) => {
       }
     }
 
-    if (customerCode?.trim() && customerCode.trim().toUpperCase() !== customer.customerCode) {
-      const existingCode = await Customer.findOne({
-        _id: { $ne: customerId },
-        branchId: targetBranchId,
-        customerCode: customerCode.trim().toUpperCase(),
-        isDeleted: false,
-      });
-      if (existingCode) {
-        return errorResponse(
-          res,
-          `Customer code "${customerCode}" already exists in this branch`,
-          409
-        );
-      }
-    }
-
     if (branchId !== undefined) customer.branchId = targetBranchId;
     if (name !== undefined) customer.name = name.trim();
     if (mobile !== undefined) customer.mobile = mobile.trim();
-    if (alternatePhone !== undefined) customer.alternatePhone = alternatePhone.trim();
     if (email !== undefined) customer.email = email.trim().toLowerCase();
     if (address !== undefined) customer.address = address.trim();
-    if (city !== undefined) customer.city = city.trim();
-    if (state !== undefined) customer.state = state.trim();
-    if (country !== undefined) customer.country = country.trim();
-    if (pincode !== undefined) customer.pincode = pincode.trim();
-    if (customerCode !== undefined) {
-      customer.customerCode = customerCode.trim() ? customerCode.trim().toUpperCase() : undefined;
-    }
     if (gstNumber !== undefined) customer.gstNumber = gstNumber.trim().toUpperCase();
     if (notes !== undefined) customer.notes = notes.trim();
     if (typeof isActive === "boolean") customer.isActive = isActive;

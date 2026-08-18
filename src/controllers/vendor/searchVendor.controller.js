@@ -21,8 +21,6 @@ export const getVendorOptionsController = async (req, res) => {
             query.$or = [
                 { name: { $regex: searchRegex } },
                 { phone: { $regex: searchRegex } },
-                { email: { $regex: searchRegex } },
-                { contactPerson: { $regex: searchRegex } },
                 { gstNumber: { $regex: searchRegex } },
             ];
         }
@@ -31,8 +29,6 @@ export const getVendorOptionsController = async (req, res) => {
         const vendors = await Vendor.find(query, {
             name: 1,
             phone: 1,
-            email: 1,
-            contactPerson: 1,
             gstNumber: 1,
             address: 1,
             isActive: 1,
@@ -45,8 +41,6 @@ export const getVendorOptionsController = async (req, res) => {
             _id: vendor._id,
             name: vendor.name,
             phone: vendor.phone,
-            email: vendor.email,
-            contactPerson: vendor.contactPerson,
             gstNumber: vendor.gstNumber,
             address: vendor.address,
             isActive: vendor.isActive,
@@ -68,5 +62,3 @@ export const getVendorOptionsController = async (req, res) => {
         );
     }
 };
-
-

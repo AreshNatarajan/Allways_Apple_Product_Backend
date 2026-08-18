@@ -30,7 +30,7 @@ export const getPurchaseByIdController = async (req, res) => {
         // ============================================================
 
         const purchase = await Purchase.findById(id)
-            .populate("vendorId", "name contactPerson phone email gstNumber address")
+            .populate("vendorId", "name phone email gstNumber address")
             .populate("createdBy", "name email")
             .populate("updatedBy", "name email")
             .populate("items.productId", "name productCode category isSerialized hsnCode description")

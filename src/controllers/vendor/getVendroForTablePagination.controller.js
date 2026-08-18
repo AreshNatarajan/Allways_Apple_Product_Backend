@@ -43,7 +43,6 @@ export const getVendorForTablePagination = async (req, res) => {
             const trimmedSearch = search.trim();
             filter.$or = [
                 { name: { $regex: trimmedSearch, $options: "i" } },
-                { contactPerson: { $regex: trimmedSearch, $options: "i" } },
                 { phone: { $regex: trimmedSearch, $options: "i" } },
                 { email: { $regex: trimmedSearch, $options: "i" } },
                 { gstNumber: { $regex: trimmedSearch, $options: "i" } },

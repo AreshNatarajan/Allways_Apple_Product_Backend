@@ -103,8 +103,21 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllPurchasesController = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber } = req.query;
+    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber, sortBy, sortOrder } = req.query;
     const user = req.user;
+
+    // ---- sort ----
+    // Only these two columns are sortable from the list UI. Vendor sorts
+    // by vendorSnapshot.name (a plain string already stored on every
+    // purchase document) rather than the populated vendorId ref, so it
+    // stays a single indexed find().sort() - no aggregation/$lookup
+    // needed, and it sorts consistently even for purchases whose vendor
+    // was later deleted.
+    const order = sortOrder === "asc" ? 1 : -1;
+    const sortSpec =
+      sortBy === "vendor"
+        ? { "vendorSnapshot.name": order, purchaseDate: -1 }
+        : { purchaseDate: order, createdAt: -1 };
 
     // ============================================================
     // 1. BUILD FILTER
@@ -238,7 +251,7 @@ export const getAllPurchasesController = async (req, res) => {
         .populate("createdBy", "name email")
         .populate("updatedBy", "name email")
         .populate("items.productId", "name productCode category isSerialized hsnCode description")
-        .sort({ purchaseDate: -1, createdAt: -1 })
+        .sort(sortSpec)
         .skip(skip)
         .limit(limit),
       Purchase.find(filter).lean(),

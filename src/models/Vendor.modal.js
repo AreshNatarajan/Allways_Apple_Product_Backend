@@ -18,19 +18,7 @@ const vendorSchema = new mongoose.Schema(
       trim: true,
     },
 
-    contactPerson: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     phone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    alternatePhone: {
       type: String,
       default: "",
       trim: true,
@@ -49,48 +37,10 @@ const vendorSchema = new mongoose.Schema(
       trim: true,
     },
 
-    city: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    state: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    country: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    pincode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     // =========================
     // BUSINESS INFORMATION
     // =========================
-    vendorCode: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: undefined, // omit entirely rather than store "" (keeps the partial unique index below sparse-correct)
-    },
-
     gstNumber: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-    },
-
-    panNumber: {
       type: String,
       default: "",
       trim: true,
@@ -190,12 +140,12 @@ vendorSchema.index(
 );
 
 vendorSchema.index(
-  { vendorCode: 1 },
+  { email: 1 },
   {
     unique: true,
     partialFilterExpression: {
       isDeleted: false,
-      vendorCode: { $exists: true, $type: "string" },
+      email: { $gt: "" },
     },
   }
 );
