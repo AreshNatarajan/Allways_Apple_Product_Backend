@@ -242,21 +242,6 @@ class PDFPurchaseGeneratorService {
                     doc.text(` ${vendor.address}`, LEFT + 20, y);
                 }
 
-                // Vendor's own supplier invoice reference, if recorded
-                if (purchase.supplierInvoiceNumber) {
-                    y += 7;
-                    doc.setFont("helvetica", "bold");
-                    doc.text("Vendor Invoice No:", LEFT, y);
-                    doc.setFont("helvetica", "normal");
-                    doc.text(` ${purchase.supplierInvoiceNumber}`, LEFT + 32, y);
-                    if (purchase.supplierInvoiceDate) {
-                        doc.setFont("helvetica", "bold");
-                        doc.text("Vendor Invoice Date:", 120, y);
-                        doc.setFont("helvetica", "normal");
-                        doc.text(` ${new Date(purchase.supplierInvoiceDate).toLocaleDateString("en-IN")}`, 158, y);
-                    }
-                }
-
                 // =====================
                 // ITEMS TABLE
                 // =====================

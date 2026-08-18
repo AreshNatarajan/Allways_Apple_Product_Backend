@@ -200,7 +200,6 @@ export const getAllPurchasesController = async (req, res) => {
 
       const searchConditions = [
         { purchaseNumber: searchRegex },
-        { supplierInvoiceNumber: searchRegex },
         { reference: searchRegex },
         { "vendorSnapshot.name": searchRegex },
         { "vendorSnapshot.gstNumber": searchRegex },
@@ -400,8 +399,6 @@ export const getAllPurchasesController = async (req, res) => {
           code: purchase.branchId.code,
         } : null,
         reference: purchase.reference || "",
-        supplierInvoiceNumber: purchase.supplierInvoiceNumber,
-        supplierInvoiceDate: purchase.supplierInvoiceDate,
         paymentStatus: purchase.paymentStatus,
         paidAmount: purchase.paidAmount,
         pendingAmount: purchase.pendingAmount,

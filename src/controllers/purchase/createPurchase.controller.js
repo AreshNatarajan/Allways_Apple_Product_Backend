@@ -135,8 +135,6 @@ export const createPurchaseController = async (req, res) => {
         
         const {
             vendorId,
-            supplierInvoiceNumber = "",
-            supplierInvoiceDate = null,
             reference = "",
             purchaseDate = new Date(),
             notes = "",
@@ -419,6 +417,10 @@ export const createPurchaseController = async (req, res) => {
                 const itemNotes = typeof item.notes === "string"
                     ? item.notes.trim().slice(0, 1000)
                     : "";
+                // MDM - a per-unit checkbox toggle entered at Purchase time,
+                // same ownership rule as description/images/notes above
+                // (this physical unit's own record, never Product-level).
+                const itemMdm = !!item.mdm;
                 const rawItemImages = Array.isArray(item.images) ? item.images : [];
                 const itemImages = rawItemImages
                     .filter((img) => img && typeof img.url === "string" && typeof img.key === "string" && img.url.trim() && img.key.trim())
@@ -464,6 +466,7 @@ export const createPurchaseController = async (req, res) => {
                     description: itemDescription,
                     images: itemImages,
                     notes: itemNotes,
+                    mdm: itemMdm,
                 });
 
                 const processedItem = {
@@ -720,8 +723,6 @@ export const createPurchaseController = async (req, res) => {
             vendorSnapshot,
             branchId: isSuperAdmin ? null : userBranchId,
             poType: isSuperAdmin ? "CENTRAL" : "BRANCH",
-            supplierInvoiceNumber,
-            supplierInvoiceDate: supplierInvoiceDate ? new Date(supplierInvoiceDate) : null,
             systemInvoiceFile: null,
             purchaseDate: new Date(purchaseDate),
             reference: reference || "",
@@ -1015,6 +1016,7 @@ export const createPurchaseController = async (req, res) => {
                 description: serialData.description || { main: "", second: "" },
                 images: serialData.images || [],
                 notes: serialData.notes || "",
+                mdm: serialData.mdm || false,
             });
             createdSerialRecords.push({ doc: serialDoc, serialData });
         }
@@ -1180,7 +1182,6 @@ export const createPurchaseController = async (req, res) => {
                 systemInvoice: systemInvoiceUrl ? {
                     url: systemInvoiceUrl,
                 } : null,
-                supplierInvoiceNumber: finalPurchase.supplierInvoiceNumber || null,
                 ...(isDirectReceive && createdBatches.length > 0 && {
                     batches: createdBatches.map(b => ({
                         batchNumber: b.batchNumber,

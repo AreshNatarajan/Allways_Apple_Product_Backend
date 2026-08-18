@@ -197,14 +197,6 @@ const purchaseSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-    supplierInvoiceNumber: {
-      type: String,
-      default: "",
-    },
-    supplierInvoiceDate: {
-      type: Date,
-      default: null,
-    },
     systemInvoiceFile: {
       type: String,
       default: null,
@@ -347,8 +339,6 @@ const PURCHASE_FROZEN_FIELDS = [
   "branchId",
   "poType",
   "purchaseDate",
-  "supplierInvoiceNumber",
-  "supplierInvoiceDate",
   "reference",
 ];
 

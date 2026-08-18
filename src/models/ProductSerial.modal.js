@@ -166,6 +166,14 @@ const productSerialSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Per-unit checkbox toggle, entered at Purchase time alongside
+    // description/images/notes above - same ownership rule (this
+    // physical unit's own record, never a Product-level field).
+    mdm: {
+      type: Boolean,
+      default: false,
+    },
+
     // Output GST (margin-scheme) is NOT decided or stored at purchase
     // time - it's a different concept from purchaseGstPercent above,
     // read fresh from GstConfig.marginSchemeRate at the moment of sale

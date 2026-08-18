@@ -29,7 +29,6 @@ export const updatePurchaseController = async (
 
         const {
             vendorId,
-            supplierInvoiceNumber,
             purchaseDate,
             paymentStatus,
             paidAmount,
@@ -41,10 +40,6 @@ export const updatePurchaseController = async (
         purchase.vendorId =
             vendorId ??
             purchase.vendorId;
-
-        purchase.supplierInvoiceNumber =
-            supplierInvoiceNumber ??
-            purchase.supplierInvoiceNumber;
 
         purchase.purchaseDate =
             purchaseDate ??
