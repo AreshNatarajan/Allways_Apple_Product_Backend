@@ -288,6 +288,30 @@ const purchaseSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // ============================================================
+    // EOD REVIEW (mirrors Sale.modal.js exactly)
+    // ============================================================
+    // Only ever set to PENDING_REVIEW by updatePurchase.controller.js
+    // when a non-SUPER_ADMIN edits this purchase (never at create time -
+    // unlike Sale, a freshly created purchase needs no review). A
+    // SUPER_ADMIN's own edit clears it back to null instead, since
+    // SUPER_ADMIN is already the reviewing authority. Once reviewed,
+    // editing again resets it back to PENDING_REVIEW - review always
+    // reflects the latest edited state, never a stale one.
+    processStatus: {
+      type: String,
+      enum: ["PENDING_REVIEW", "APPROVED", "REJECTED"],
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -310,6 +334,8 @@ purchaseSchema.index({ isDeleted: 1, vendorId: 1 });
 // (a purchase's own branchId is null for CENTRAL - the destination
 // branch lives per item instead).
 purchaseSchema.index({ "items.branchId": 1 });
+// Powers the EOD review queue/badge (mirrors Sale.modal.js's identical index).
+purchaseSchema.index({ isDeleted: 1, processStatus: 1 });
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE
@@ -317,29 +343,38 @@ purchaseSchema.index({ "items.branchId": 1 });
 // A purchase is editable while it's a DRAFT. Once it leaves DRAFT
 // (COMPLETED or CANCELLED - anything other than DRAFT represents a
 // finalized transaction, not a work-in-progress one), the fields that
-// describe what was actually bought/paid-for/from-whom must never be
-// rewritten - that's the historical record. Payment collection and
-// status transitions (e.g. cancelling) are real, legitimate workflows
-// that continue after completion, so those stay mutable.
+// describe what/where/how much inventory was created must never be
+// rewritten - that's what actually moved stock and can't be silently
+// redirected after the fact. Everything else describing the
+// transaction (who it was bought from, when, why) is a correctable
+// data-entry detail, not an inventory fact, so it stays editable via
+// the dedicated Purchase Edit flow (updatePurchase.controller.js) even
+// once COMPLETED - see that controller for the real guardrails
+// (vendor re-validation, EOD re-review on every edit).
 //
-// Frozen once no longer DRAFT: items, totals, GST-affecting fields,
-// vendor identity/snapshot, and the other facts that describe the
-// original transaction.
-// Stays mutable always: paymentStatus, paidAmount, pendingAmount,
-// paymentDetails, status itself, notes, invoice/signature file
-// attachments, updatedBy, isDeleted/deletedAt (soft-delete stays
-// possible per this project's soft-delete-only convention).
+// Frozen once no longer DRAFT: branchId/poType (where the inventory
+// was created - CENTRAL vs BRANCH changes where PendingReceive/
+// BatchStock already point - this can never change after the fact).
+//
+// items/totalAmount/roundOff/roundOffAmount are schema-mutable (an
+// edit needs to be able to APPEND a missed item and grow the total),
+// but NOT schema-frozen protection here means updatePurchase.controller.js
+// itself is the enforcement point: it only ever appends new entries to
+// items (via purchaseItemProcessor.service.js, the same
+// inventory-creation code createPurchase.controller.js uses) and never
+// mutates or removes an existing entry - every already-existing
+// physical unit/batch this purchase already created stays exactly as
+// it was. totalAmount only ever grows by exactly the sum of the
+// appended items.
+//
+// Stays mutable always: vendorId/vendorSnapshot, purchaseDate,
+// reference, paymentStatus, paidAmount, pendingAmount, paymentDetails,
+// status itself, notes, invoice/signature file attachments, updatedBy,
+// isDeleted/deletedAt (soft-delete stays possible per this project's
+// soft-delete-only convention), processStatus/reviewedBy/reviewedAt.
 const PURCHASE_FROZEN_FIELDS = [
-  "items",
-  "totalAmount",
-  "roundOff",
-  "roundOffAmount",
-  "vendorId",
-  "vendorSnapshot",
   "branchId",
   "poType",
-  "purchaseDate",
-  "reference",
 ];
 
 // Captures the persisted status at load time, before any in-memory

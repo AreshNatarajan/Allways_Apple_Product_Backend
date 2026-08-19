@@ -37,7 +37,15 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
             );
         }
 
-        const trimmedBarcode = barcodeValue.trim();
+        // Every sibling serial-lookup controller (bulkReceive,
+        // packTransfer, receiveTransfer, getSerializedItemDetail)
+        // normalizes to uppercase before querying, since
+        // ProductSerial.serialNumber is always stored uppercase
+        // (schema-level `uppercase: true`, and set that way at creation
+        // in purchaseItemProcessor.service.js). This controller was the
+        // one outlier only trimming - a lowercase-typed/scanned value
+        // would silently 404 as "not found" even though it exists.
+        const trimmedBarcode = barcodeValue.trim().toUpperCase();
 
         const branchObjectId = new mongoose.Types.ObjectId(userBranchId);
 
@@ -58,10 +66,20 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
         //
         // ============================================================
 
+        // Deliberately looked up by serialNumber ALONE first - status/
+        // branch are checked separately below with their own specific
+        // error messages, instead of being baked into the existence
+        // query. Folding "AVAILABLE" + "at this branch" into the find()
+        // itself meant a unit that's genuinely in stock but RESERVED
+        // (packed for an outbound transfer), IN_TRANSIT, ASSIGNED
+        // (CENTRAL purchase not yet received), or simply sitting at a
+        // different branch produced the exact same "no available
+        // product found" as a barcode that's completely unknown to the
+        // system - indistinguishable from real data corruption to
+        // whoever's scanning, and impossible to diagnose from the
+        // error message alone.
         const serialMatch = await ProductSerial.findOne({
             serialNumber: trimmedBarcode,
-            currentBranchId: branchObjectId,
-            status: "AVAILABLE",
         })
             .populate(
                 "productId",
@@ -87,6 +105,37 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
                     res,
                     `${product.name} has no HSN/SAC code set on the product master`,
                     400
+                );
+            }
+
+            // ----------------------------------------------------------
+            // ELIGIBILITY - honest, specific reasons instead of a blanket
+            // "not found" for a unit that genuinely exists but isn't
+            // sellable right here, right now.
+            // ----------------------------------------------------------
+
+            const STATUS_MESSAGE = {
+                ASSIGNED: `${product.name} (${serialMatch.serialNumber}) is assigned to a branch but hasn't been received yet`,
+                RESERVED: `${product.name} (${serialMatch.serialNumber}) is reserved for an outbound transfer and cannot be sold right now`,
+                IN_TRANSIT: `${product.name} (${serialMatch.serialNumber}) is in transit between branches`,
+                SOLD: `${product.name} (${serialMatch.serialNumber}) has already been sold`,
+                DAMAGED: `${product.name} (${serialMatch.serialNumber}) is marked as damaged and cannot be sold`,
+                MISSING: `${product.name} (${serialMatch.serialNumber}) is marked as missing`,
+            };
+
+            if (serialMatch.status !== "AVAILABLE") {
+                return errorResponse(
+                    res,
+                    STATUS_MESSAGE[serialMatch.status] || `${product.name} (${serialMatch.serialNumber}) is not currently available for sale (status: ${serialMatch.status})`,
+                    404
+                );
+            }
+
+            if (String(serialMatch.currentBranchId) !== String(branchObjectId)) {
+                return errorResponse(
+                    res,
+                    `${product.name} (${serialMatch.serialNumber}) is available, but at a different branch`,
+                    404
                 );
             }
 
@@ -186,11 +235,13 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
         //
         // ============================================================
 
+        // Same principle as the serialized lookup above - found by
+        // barcode alone first, eligibility (branch/status/quantity)
+        // checked separately with specific messages, rather than
+        // collapsing "doesn't exist" and "exists but not here/sold out"
+        // into the same generic 404.
         const batchStock = await BatchStock.findOne({
             barcode: trimmedBarcode,
-            branchId: branchObjectId,
-            status: "ACTIVE",
-            availableQuantity: { $gt: 0 },
         })
             .populate(
                 "productId",
@@ -219,6 +270,30 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
                 return errorResponse(
                     res,
                     "This product is no longer active and cannot be sold",
+                    404
+                );
+            }
+
+            if (String(batchStock.branchId) !== String(branchObjectId)) {
+                return errorResponse(
+                    res,
+                    `${product.name} (batch ${batchStock.batchNumber}) belongs to a different branch`,
+                    404
+                );
+            }
+
+            if (batchStock.status !== "ACTIVE") {
+                return errorResponse(
+                    res,
+                    `${product.name} (batch ${batchStock.batchNumber}) is not active (status: ${batchStock.status})`,
+                    404
+                );
+            }
+
+            if (!(batchStock.availableQuantity > 0)) {
+                return errorResponse(
+                    res,
+                    `${product.name} (batch ${batchStock.batchNumber}) is out of stock at this branch`,
                     404
                 );
             }

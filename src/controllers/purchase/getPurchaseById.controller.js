@@ -7,6 +7,7 @@ import PendingReceive from "../../models/PendingReceive.modal.js";
 import Batch from "../../models/Batch.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import Branch from "../../models/Branch.modal.js";
+import PurchaseEditHistory from "../../models/PurchaseEditHistory.modal.js";
 
 import {
     successResponse,
@@ -33,6 +34,7 @@ export const getPurchaseByIdController = async (req, res) => {
             .populate("vendorId", "name phone email gstNumber address")
             .populate("createdBy", "name email")
             .populate("updatedBy", "name email")
+            .populate("reviewedBy", "name email")
             .populate("items.productId", "name productCode category isSerialized hsnCode description")
             .populate("paymentDetails.handledBy.userId", "name email")
             .lean();
@@ -48,7 +50,7 @@ export const getPurchaseByIdController = async (req, res) => {
         const serials = await ProductSerial.find({
             purchaseId: purchase._id,
         })
-            .select("productId serialNumber modelNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt")
+            .select("productId serialNumber modelNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt description notes mdm images")
             .populate("currentBranchId", "name code")
             .populate("assignedBranchId", "name code")
             .lean();
@@ -225,6 +227,10 @@ export const getPurchaseByIdController = async (req, res) => {
                     sellingPrice: matchedSerial.sellingPrice,
                     gstApplicable: matchedSerial.gstApplicable,
                     status: matchedSerial.status,
+                    description: matchedSerial.description || { main: "", second: "" },
+                    notes: matchedSerial.notes || "",
+                    mdm: !!matchedSerial.mdm,
+                    images: matchedSerial.images || [],
                     currentBranch: matchedSerial.currentBranchId ? {
                         _id: matchedSerial.currentBranchId._id,
                         name: matchedSerial.currentBranchId.name,
@@ -483,9 +489,20 @@ export const getPurchaseByIdController = async (req, res) => {
         });
 
         // ============================================================
-        // 11. RESPONSE
+        // 11. EDIT HISTORY (EOD review reads this to see what changed -
+        // the edit already applied by the time review happens, so this
+        // is the only surviving record of before/after values)
         // ============================================================
-        
+
+        const editHistory = await PurchaseEditHistory.find({ purchaseId: purchase._id })
+            .sort({ createdAt: -1 })
+            .populate("editedBy", "name email")
+            .lean();
+
+        // ============================================================
+        // 12. RESPONSE
+        // ============================================================
+
         return successResponse(res, "Purchase retrieved successfully", {
             ...purchase,
             overallReceiveStatus,
@@ -495,6 +512,7 @@ export const getPurchaseByIdController = async (req, res) => {
                 totalAvailableQuantity,
                 batches: batchSummaryBatches,
             },
+            editHistory,
         });
         
     } catch (error) {
