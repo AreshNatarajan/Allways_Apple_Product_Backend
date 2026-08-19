@@ -48,8 +48,7 @@ export const getProductOptionsController = async (
                 name: 1,
                 category: 1,
                 description: 1,
-                images: 1,
-                
+
                 // Type Info
                 isSerialized: 1,
 
@@ -78,7 +77,6 @@ export const getProductOptionsController = async (
                 name: product.name,
                 category: product.category,
                 description: product.description,
-                images: product.images,
                 isSerialized: product.isSerialized,
                 isActive: product.isActive,
                 createdAt: product.createdAt,

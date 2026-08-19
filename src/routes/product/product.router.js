@@ -12,8 +12,6 @@ import { deleteProductController } from '../../controllers/product/deleteProduct
 import { reactivateProductController } from '../../controllers/product/reactivateProduct.controller.js';
 import { statsProductController } from '../../controllers/product/statsProduct.controller.js';
 import { getProductOptionsController } from '../../controllers/product/searchProduct.controller.js';
-import { uploadProductImagesController } from '../../controllers/product/uploadProductImages.controller.js';
-import { removeProductImageController } from '../../controllers/product/removeProductImage.controller.js';
 
 // Read endpoints - any authenticated role (incl. STAFF) can browse products.
 router.get('/options', authMiddleware, getProductOptionsController);
@@ -27,8 +25,5 @@ router.post('/create', authMiddleware, onlyAdminRoles, createProductController);
 router.put('/:id', authMiddleware, onlyAdminRoles, updateProductController);
 router.delete('/:id', authMiddleware, onlyAdminRoles, deleteProductController);
 router.patch('/:id/reactivate', authMiddleware, onlyAdminRoles, reactivateProductController);
-
-router.post('/:id/images', authMiddleware, onlyAdminRoles, uploadProductImagesController);
-router.delete('/:id/images', authMiddleware, onlyAdminRoles, removeProductImageController);
 
 export default router;

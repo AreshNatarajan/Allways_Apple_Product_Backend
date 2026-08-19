@@ -6,6 +6,7 @@ export const CATEGORY_SERIALIZED_MAP = {
     MOBILE: true,
     LAPTOP: true,
     TAB: true,
+    "IMAC, MAC MINI, MAC STUDIO": true,
 };
 
 export const deriveIsSerialized = (category) => CATEGORY_SERIALIZED_MAP[category] ?? false;

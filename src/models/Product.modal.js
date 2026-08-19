@@ -21,57 +21,42 @@ const productSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ["ACCESSORY", "MOBILE", "LAPTOP", "TAB"],
+      enum: ["ACCESSORY", "MOBILE", "LAPTOP", "TAB", "IMAC, MAC MINI, MAC STUDIO"],
     },
 
     // ============================================================
-    // description / images - SOURCE OF TRUTH FOR NON-SERIALIZED
-    // PRODUCTS ONLY.
+    // description - SOURCE OF TRUTH FOR NON-SERIALIZED PRODUCTS ONLY.
     // ============================================================
-    // For a non-serialized product these describe the product in
-    // general and are correctly shared across every batch/BatchStock of
-    // it - never duplicate them onto BatchStock.
+    // For a non-serialized product this describes the product in
+    // general and is correctly shared across every batch/BatchStock of
+    // it - never duplicate it onto BatchStock.
     //
-    // For a SERIALIZED product (isSerialized: true), these fields are
-    // NOT the source of truth for an individual physical unit - each
-    // unit's own description/photos live on ProductSerial.description /
-    // ProductSerial.images instead (see ProductSerial.modal.js), since
-    // condition/cosmetic notes genuinely differ unit-to-unit even for
-    // the same model. These fields are kept on Product (not removed)
-    // only because non-serialized products still need them, and because
-    // pre-existing serialized products may already have legacy data
-    // here - never trust these as per-unit data going forward, and
-    // never silently fall back to them for a serialized unit's display.
+    // For a SERIALIZED product (isSerialized: true), this field is NOT
+    // the source of truth for an individual physical unit - each unit's
+    // own description lives on ProductSerial.description instead (see
+    // ProductSerial.modal.js), since condition/cosmetic notes genuinely
+    // differ unit-to-unit even for the same model. This field is kept on
+    // Product (not removed) only because non-serialized products still
+    // need it, and because pre-existing serialized products may already
+    // have legacy data here - never trust this as per-unit data going
+    // forward, and never silently fall back to it for a serialized
+    // unit's display.
+    //
+    // Note: non-serialized products have no image concept at all.
+    // Serialized units still carry their own images on
+    // ProductSerial.images, untouched by this.
     description: {
       type: String,
       trim: true,
       default: "",
     },
 
-    images: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
-
-    // S3 object keys behind each images[] URL, same index alignment as
-    // images[] - needed to delete/replace individual S3 objects without
-    // parsing keys back out of public URLs (same pattern as
-    // Branch.logoKey / User.profilePhotoKey).
-    imageKeys: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
-
     // =========================
     // PRODUCT TYPE
     // =========================
     // Server-derived from `category` (see utils/deriveProductType.js) -
     // never accepted from the client. ACCESSORY -> false, MOBILE/LAPTOP/
-    // TAB -> true.
+    // TAB/"IMAC, MAC MINI, MAC STUDIO" -> true.
     isSerialized: {
       type: Boolean,
       default: false,

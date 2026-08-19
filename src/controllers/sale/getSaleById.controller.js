@@ -23,7 +23,7 @@ export const getSaleByIdController = async (req, res) => {
             .populate("branchId", "name code email phones address bankDetails upiQrImage googleMapUrl")
             .populate("createdBy", "name email role")
             .populate("updatedBy", "name email role")
-            .populate("items.productId", "name category description images productCode hsnCode isSerialized")
+            .populate("items.productId", "name category description productCode hsnCode isSerialized")
             .populate("items.productSerialId", "serialNumber modelNumber status description images notes")
             .populate("paymentDetails.handledBy.userId", "name email role")
             .populate("handledBy.userId", "name email role")
@@ -61,10 +61,11 @@ export const getSaleByIdController = async (req, res) => {
                 // Ownership split: a serialized item's description/images
                 // are this exact physical unit's own (ProductSerial),
                 // never the parent Product's - a non-serialized item has
-                // no per-unit record at all, so Product's shared
-                // description/images are correctly used there instead.
+                // no per-unit record at all, and non-serialized products
+                // have no image concept, so images is always the
+                // serialized unit's own or empty.
                 productDescription: item.isSerialized ? (serial?.description || { main: "", second: "" }) : (product?.description || ""),
-                images: item.isSerialized ? (serial?.images || []) : (product?.images || []),
+                images: item.isSerialized ? (serial?.images || []) : [],
                 // notes is a serialized-unit-only concept (internal/
                 // staff-facing note, entered per-unit at Purchase time) -
                 // no Product-level equivalent, so this stays blank for a
