@@ -137,11 +137,16 @@ const userSchema = new mongoose.Schema(
 // guards.
 const requiresBranch = (role) => role === "BRANCH_ADMIN" || role === "STAFF";
 
-userSchema.pre("save", function (next) {
+// No `next` callback parameter - this project runs Mongoose 9.x, which
+// dropped support for callback-style middleware entirely. A hook must
+// now be synchronous (throw to reject) or return a Promise/be async
+// (reject/throw to reject) - the old `function(next) {...; next();}`
+// style silently breaks with "next is not a function" since Kareem no
+// longer passes a real callback. No I/O needed here, so plain sync.
+userSchema.pre("save", function () {
   if (requiresBranch(this.role) && !this.branchId) {
-    return next(new Error("branchId is required when role is BRANCH_ADMIN or STAFF"));
+    throw new Error("branchId is required when role is BRANCH_ADMIN or STAFF");
   }
-  next();
 });
 
 // Query-level updates (findByIdAndUpdate/updateOne/findOneAndUpdate)
