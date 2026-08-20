@@ -3,6 +3,7 @@ const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
+import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
 
 // 1. Import the controller function
 import { createSaleController } from '../../controllers/sale/createSale.controller.js';
@@ -21,26 +22,31 @@ import { getAvailableProductsController } from '../../controllers/sale/getAvaila
 import { getScannerBarcodeByAvailableProductController } from '../../controllers/sale/getScannerBarcodeByAvailableProductController.js';
 
 
+// Sale creation is BRANCH_ADMIN / STAFF only (onlyBranchRoles) -
+// SUPER_ADMIN keeps full read access below (list/detail/stats, for
+// oversight and EOD review) but is explicitly blocked from every
+// creation-flow endpoint, rather than only failing implicitly once
+// they hit the branchId-required check deeper in the controller.
 router.get(
     '/scanner/:barcodeValue',
     authMiddleware,
+    onlyBranchRoles,
     getScannerBarcodeByAvailableProductController
 );
 
 // Route for searching purchased products with serial number
-router.get('/available-products', authMiddleware, getAvailableProductsController);
+router.get('/available-products', authMiddleware, onlyBranchRoles, getAvailableProductsController);
 
 // Route for getting sales statistics
 
 router.get('/stats', authMiddleware, statsSaleController);
 
 // Add route for getting all sales
-router.get('/', authMiddleware, getAllSalesController); 
+router.get('/', authMiddleware, getAllSalesController);
 
-// Accountability selfie - any authenticated role may call this (the
-// "non-SUPER_ADMIN sales only" rule is enforced in
-// createSale.controller.js, not here).
-router.post('/upload-selfie', authMiddleware, uploadSaleSelfieController);
+// Accountability selfie - part of the sale-creation flow, same
+// BRANCH_ADMIN/STAFF-only gate as the rest of it.
+router.post('/upload-selfie', authMiddleware, onlyBranchRoles, uploadSaleSelfieController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.
@@ -51,7 +57,7 @@ router.get('/:id', authMiddleware, getSaleByIdController);
 
 // 2. Change the route handler to use the imported controller
 
-router.post('/create', authMiddleware, createSaleController);
+router.post('/create', authMiddleware, onlyBranchRoles, createSaleController);
 
 
 

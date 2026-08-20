@@ -94,6 +94,11 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
             )
             .lean();
 
+        console.log(
+            "getScannerBarcodeByAvailableProductController",
+            "serialMatch:", serialMatch
+        );    
+
         if (serialMatch && serialMatch.productId) {
             const product = serialMatch.productId;
 
