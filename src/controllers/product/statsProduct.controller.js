@@ -12,32 +12,38 @@ export const statsProductController = async (
 
     try {
 
+        // TOTAL / ACTIVE / INACTIVE - deliberately NOT filtered by
+        // isDeleted. deleteProductController's "Deactivate" action sets
+        // isActive:false AND isDeleted:true together (this app has no
+        // hard-delete - isDeleted here just means "deactivated via that
+        // specific endpoint", not "gone forever", same convention
+        // documented in getProducts.controller.js). Filtering isDeleted
+        // here would silently exclude every product deactivated the
+        // normal way - the most common deactivation path - from both
+        // totalProducts and inactiveProducts, undercounting exactly the
+        // number this stat exists to show. Matches the product list's
+        // own "All (incl. inactive)" view, which shows the same set.
+
         // TOTAL PRODUCTS
         const totalProducts =
-            await Product.countDocuments({
-                isDeleted: false,
-            });
+            await Product.countDocuments({});
 
         // ACTIVE PRODUCTS
         const activeProducts =
             await Product.countDocuments({
-                isDeleted: false,
                 isActive: true,
             });
 
         // INACTIVE PRODUCTS
         const inactiveProducts =
             await Product.countDocuments({
-                isDeleted: false,
                 isActive: false,
             });
 
         const categories =
             await Product.distinct(
                 "category",
-                {
-                    isDeleted: false,
-                }
+                {}
             );
 
         return successResponse(
