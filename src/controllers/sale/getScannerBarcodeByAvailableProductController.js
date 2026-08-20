@@ -17,6 +17,13 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
         const { barcodeValue } = req.params;
         const userBranchId = req.user?.branchId;
 
+
+        console.log(
+            "getScannerBarcodeByAvailableProductController",
+            "userBranchId:", userBranchId,
+            "barcodeValue:", barcodeValue
+        );  
+
         // ============================================================
         // 1. VALIDATION
         // ============================================================
