@@ -2,6 +2,10 @@
 import mongoose from "mongoose";
 import Purchase from "../../models/Purchase.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
+import Product from "../../models/Product.modal.js";
+import Batch from "../../models/Batch.modal.js";
+import BatchStock from "../../models/BatchStock.model.js";
+import Inventory from "../../models/Inventory.modal.js";
 import Vendor from "../../models/Vendor.modal.js";
 import PurchaseEditHistory from "../../models/PurchaseEditHistory.modal.js";
 import {
@@ -14,6 +18,13 @@ import {
     successResponse,
     errorResponse,
 } from "../../utils/responseHandler.js";
+
+// Statuses that mean a serialized unit has genuinely moved (sold,
+// mid-transfer, or flagged) - editing product/serial/price past this
+// point would desync the item from stock that's already elsewhere.
+// ASSIGNED (CENTRAL, not yet received) and AVAILABLE (sitting in
+// stock, untouched) are the only states a correction is allowed from.
+const SERIAL_LOCKED_STATUSES = ["SOLD", "IN_TRANSIT", "RESERVED", "DAMAGED", "MISSING"];
 
 // ============================================================
 // Purchase Edit. Vendor/date/reference/notes/payment/invoice are
@@ -264,6 +275,229 @@ export const updatePurchaseController = async (req, res) => {
                 oldValue: `${previousItemCount} item(s)`,
                 newValue: `${purchase.items.length} item(s) (+${phase1.processedItems.length} added)`,
             });
+        }
+
+        // ============================================================
+        // EXISTING ITEM CORRECTIONS - product/serial number/prices on
+        // an item that was already purchased. Deliberately NOT the
+        // default append-only path - this exists specifically for
+        // fixing a genuine data-entry mistake (e.g. the wrong Product
+        // master selected at purchase time), not for routine editing.
+        // Blocked once the physical unit/batch has actually moved
+        // (sold/transferred/damaged) - correcting a mistake before
+        // anything downstream depends on it is safe; rewriting it
+        // after stock has already moved under the old identity is not.
+        // ============================================================
+        const itemUpdates = req.body.itemUpdates; // { serialized: [...], nonSerialized: [...] }
+        const serializedUpdates = itemUpdates?.serialized || [];
+        const nonSerializedUpdates = itemUpdates?.nonSerialized || [];
+
+        for (const upd of serializedUpdates) {
+            const { productSerialId, productId: newProductId, serialNumber: newSerialRaw, purchasePrice: newPurchasePriceRaw, sellingPrice: newSellingPriceRaw } = upd || {};
+            if (!productSerialId || !mongoose.Types.ObjectId.isValid(productSerialId)) continue;
+
+            const serial = await ProductSerial.findOne({
+                _id: productSerialId,
+                purchaseId: purchase._id,
+                isDeleted: false,
+            }).session(session);
+
+            if (!serial) continue;
+
+            if (SERIAL_LOCKED_STATUSES.includes(serial.status)) {
+                throw buildValidationError(
+                    `Serial ${serial.serialNumber} has already moved (status: ${serial.status}) and can no longer be reassigned.`
+                );
+            }
+
+            const changingProduct = newProductId && String(newProductId) !== String(serial.productId);
+            const newSerialNumber = newSerialRaw ? newSerialRaw.trim().toUpperCase() : serial.serialNumber;
+            const changingSerial = newSerialNumber !== serial.serialNumber;
+            const newPurchasePrice = newPurchasePriceRaw !== undefined ? parseFloat(newPurchasePriceRaw) || 0 : serial.purchasePrice;
+            const newSellingPrice = newSellingPriceRaw !== undefined ? parseFloat(newSellingPriceRaw) || 0 : serial.sellingPrice;
+            const changingPrice = newPurchasePrice !== serial.purchasePrice || newSellingPrice !== serial.sellingPrice;
+
+            if (!changingProduct && !changingSerial && !changingPrice) continue;
+
+            let newProduct = null;
+            if (changingProduct) {
+                newProduct = await Product.findOne({ _id: newProductId, isDeleted: false }).session(session);
+                if (!newProduct) throw buildValidationError(`Product not found: ${newProductId}`);
+                if (!newProduct.isSerialized) throw buildValidationError(`${newProduct.name} is not a serialized product`);
+                if (!newProduct.isActive) throw buildValidationError(`${newProduct.name} is deactivated and cannot be assigned`);
+                if (!newProduct.hsnCode?.trim()) throw buildValidationError(`${newProduct.name} has no HSN/SAC code set on the product master`);
+            }
+
+            if (changingSerial) {
+                const dupe = await ProductSerial.findOne({
+                    _id: { $ne: serial._id },
+                    serialNumber: newSerialNumber,
+                    isDeleted: false,
+                }).session(session);
+                if (dupe) throw buildValidationError(`Serial number already exists: ${newSerialNumber}`);
+            }
+
+            if (newPurchasePrice <= 0) throw buildValidationError(`Serial ${serial.serialNumber}: Purchase price must be greater than 0`);
+            if (newSellingPrice < newPurchasePrice) throw buildValidationError(`Serial ${serial.serialNumber}: Selling price cannot be less than purchase price`);
+
+            const oldSerialNumber = serial.serialNumber;
+            const oldProductName = changingProduct
+                ? (await Product.findById(serial.productId).select("name").lean())?.name
+                : null;
+
+            if (changingProduct) {
+                changes.push({ field: `item:${oldSerialNumber}:product`, label: `Product (${oldSerialNumber})`, oldValue: oldProductName || String(serial.productId), newValue: newProduct.name });
+                serial.productId = newProduct._id;
+                serial.modelNumber = newProduct.modelNumber || serial.modelNumber;
+                serial.hsnCode = newProduct.hsnCode;
+            }
+            if (changingSerial) {
+                changes.push({ field: `item:${oldSerialNumber}:serialNumber`, label: `Serial Number (${oldSerialNumber})`, oldValue: oldSerialNumber, newValue: newSerialNumber });
+                serial.serialNumber = newSerialNumber;
+            }
+            if (changingPrice) {
+                changes.push({
+                    field: `item:${newSerialNumber}:price`,
+                    label: `Price (${newSerialNumber})`,
+                    oldValue: `Purchase ${serial.purchasePrice} / Sale ${serial.sellingPrice}`,
+                    newValue: `Purchase ${newPurchasePrice} / Sale ${newSellingPrice}`,
+                });
+            }
+
+            const priceDelta = newPurchasePrice - serial.purchasePrice;
+            serial.purchasePrice = newPurchasePrice;
+            serial.sellingPrice = newSellingPrice;
+            await serial.save({ session });
+
+            // Mirror the correction onto the matching Purchase.items[]
+            // entry (matched by the OLD serial number, since that's
+            // what's still on the item until this loop updates it).
+            const purchaseItem = purchase.items.find((it) => it.serialNumbers?.[0]?.serialNumber === oldSerialNumber);
+            if (purchaseItem) {
+                if (changingProduct) {
+                    purchaseItem.productId = newProduct._id;
+                    purchaseItem.hsnCode = newProduct.hsnCode;
+                }
+                if (changingSerial) purchaseItem.serialNumbers = [{ serialNumber: newSerialNumber }];
+                purchaseItem.purchasePrice = newPurchasePrice;
+                purchaseItem.sellingPrice = newSellingPrice;
+                purchaseItem.totalPrice = newPurchasePrice;
+            }
+
+            if (priceDelta !== 0) {
+                purchase.totalAmount = Math.round((purchase.totalAmount + priceDelta) * 100) / 100;
+            }
+        }
+
+        for (const upd of nonSerializedUpdates) {
+            const { batchId, productId: newProductId, purchasePrice: newPurchasePriceRaw, sellingPrice: newSellingPriceRaw } = upd || {};
+            if (!batchId || !mongoose.Types.ObjectId.isValid(batchId)) continue;
+
+            const batch = await Batch.findOne({ _id: batchId, purchaseId: purchase._id }).session(session);
+            if (!batch) continue;
+
+            const batchStocks = await BatchStock.find({ batchId: batch._id, purchaseId: purchase._id }).session(session);
+
+            const alreadyMoved = batchStocks.some((bs) => bs.soldQuantity > 0 || bs.damagedQuantity > 0);
+            if (alreadyMoved) {
+                throw buildValidationError(
+                    `Batch ${batch.batchNumber} already has sold or damaged stock and can no longer be reassigned.`
+                );
+            }
+
+            const changingProduct = newProductId && String(newProductId) !== String(batch.productId);
+            const newPurchasePrice = newPurchasePriceRaw !== undefined ? parseFloat(newPurchasePriceRaw) || 0 : batch.purchasePrice;
+            const newSellingPrice = newSellingPriceRaw !== undefined ? parseFloat(newSellingPriceRaw) || 0 : batch.sellingPrice;
+            const changingPrice = newPurchasePrice !== batch.purchasePrice || newSellingPrice !== batch.sellingPrice;
+
+            if (!changingProduct && !changingPrice) continue;
+
+            let newProduct = null;
+            if (changingProduct) {
+                newProduct = await Product.findOne({ _id: newProductId, isDeleted: false }).session(session);
+                if (!newProduct) throw buildValidationError(`Product not found: ${newProductId}`);
+                if (newProduct.isSerialized) throw buildValidationError(`${newProduct.name} is a serialized product, not a batch product`);
+                if (!newProduct.isActive) throw buildValidationError(`${newProduct.name} is deactivated and cannot be assigned`);
+                if (!newProduct.hsnCode?.trim()) throw buildValidationError(`${newProduct.name} has no HSN/SAC code set on the product master`);
+            }
+
+            if (newPurchasePrice <= 0) throw buildValidationError(`Batch ${batch.batchNumber}: Purchase price must be greater than 0`);
+            if (newSellingPrice < newPurchasePrice) throw buildValidationError(`Batch ${batch.batchNumber}: Selling price cannot be less than purchase price`);
+
+            const oldProduct = changingProduct ? await Product.findById(batch.productId).select("name hsnCode").lean() : null;
+
+            if (changingProduct) {
+                changes.push({ field: `item:${batch.batchNumber}:product`, label: `Product (${batch.batchNumber})`, oldValue: oldProduct?.name || String(batch.productId), newValue: newProduct.name });
+
+                // Inventory is keyed by (productId, branchId) - moving a
+                // batch to a different product means its quantity must
+                // move too, at every branch this batch has stock in,
+                // or Inventory totals for both products go stale.
+                for (const bs of batchStocks) {
+                    await Inventory.findOneAndUpdate(
+                        { productId: batch.productId, branchId: bs.branchId },
+                        { $inc: { quantity: -bs.quantity } },
+                        { session }
+                    );
+                    await Inventory.findOneAndUpdate(
+                        { productId: newProduct._id, branchId: bs.branchId },
+                        { $inc: { quantity: bs.quantity } },
+                        { upsert: true, session }
+                    );
+                    bs.productId = newProduct._id;
+                    bs.productCode = newProduct.productCode || bs.productCode;
+                }
+                batch.productId = newProduct._id;
+            }
+
+            if (changingPrice) {
+                changes.push({
+                    field: `item:${batch.batchNumber}:price`,
+                    label: `Price (${batch.batchNumber})`,
+                    oldValue: `Purchase ${batch.purchasePrice} / Sale ${batch.sellingPrice}`,
+                    newValue: `Purchase ${newPurchasePrice} / Sale ${newSellingPrice}`,
+                });
+                for (const bs of batchStocks) {
+                    bs.purchasePrice = newPurchasePrice;
+                    bs.sellingPrice = newSellingPrice;
+                }
+            }
+
+            const priceDeltaPerUnit = newPurchasePrice - batch.purchasePrice;
+            batch.purchasePrice = newPurchasePrice;
+            batch.sellingPrice = newSellingPrice;
+            await batch.save({ session });
+            for (const bs of batchStocks) await bs.save({ session });
+
+            // Every Purchase.items[] line built from this exact batch
+            // (a CENTRAL purchase can legitimately split one batch
+            // across several destination-branch item lines) gets the
+            // same correction - they physically ARE this batch.
+            let totalDelta = 0;
+            for (const it of purchase.items) {
+                if (!it.batches?.[0]?.batchId || String(it.batches[0].batchId) !== String(batch._id)) continue;
+
+                const oldItemTotal = it.totalPrice;
+                if (changingProduct) {
+                    it.productId = newProduct._id;
+                    it.hsnCode = newProduct.hsnCode;
+                }
+                it.purchasePrice = newPurchasePrice;
+                it.sellingPrice = newSellingPrice;
+                it.batches[0].purchasePrice = newPurchasePrice;
+                it.batches[0].sellingPrice = newSellingPrice;
+
+                const baseAmount = (it.quantity || 0) * newPurchasePrice;
+                const gstAmount = Math.round((baseAmount * (it.purchaseGstPercent || 0)) / 100 * 100) / 100;
+                it.purchaseGstAmount = gstAmount;
+                it.totalPrice = Math.round((baseAmount + gstAmount) * 100) / 100;
+
+                totalDelta += it.totalPrice - oldItemTotal;
+            }
+
+            if (totalDelta !== 0) {
+                purchase.totalAmount = Math.round((purchase.totalAmount + totalDelta) * 100) / 100;
+            }
         }
 
         // ============================================================
