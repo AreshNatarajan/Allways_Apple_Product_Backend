@@ -14,6 +14,17 @@ const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PENDING", "PARTIAL"];
 const PO_TYPE_VALUES = ["CENTRAL", "BRANCH"];
 
+// Columns whose value isn't a plain top-level Purchase field sortable by
+// a simple find().sort() - either it lives on the first item's own
+// subdocument (purchasePrice/serialNumber), or entirely off-document on
+// ProductSerial/Product (modelNumber/description for a serialized vs
+// non-serialized first item). Sorted in-memory on the full filtered set
+// (already fetched for stats anyway - see allFiltered below) instead of
+// an aggregation $lookup, to keep the "one Purchase document = one row"
+// find() behavior intact for a CENTRAL purchase split across branches.
+const CUSTOM_SORT_FIELDS = new Set(["modelNumber", "serialNumber", "description", "qty", "purchasePrice", "totalAmount", "paidAmount", "pendingAmount"]);
+const NUMERIC_SORT_FIELDS = new Set(["qty", "purchasePrice", "totalAmount", "paidAmount", "pendingAmount"]);
+
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -114,6 +125,7 @@ export const getAllPurchasesController = async (req, res) => {
     // needed, and it sorts consistently even for purchases whose vendor
     // was later deleted.
     const order = sortOrder === "asc" ? 1 : -1;
+    const isCustomSort = CUSTOM_SORT_FIELDS.has(sortBy);
     const sortSpec =
       sortBy === "vendor"
         ? { "vendorSnapshot.name": order, purchaseDate: -1 }
@@ -243,18 +255,108 @@ export const getAllPurchasesController = async (req, res) => {
     // so stats always match what the active filters show.
     // ============================================================
 
-    const [purchasesPage, allFiltered] = await Promise.all([
-      Purchase.find(filter)
-        .populate("vendorId", "name phone email gstNumber")
-        .populate("branchId", "name code")
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email")
-        .populate("items.productId", "name productCode category isSerialized hsnCode description")
-        .sort(sortSpec)
-        .skip(skip)
-        .limit(limit),
-      Purchase.find(filter).lean(),
-    ]);
+    const populateFields = [
+      ["vendorId", "name phone email gstNumber"],
+      ["branchId", "name code"],
+      ["createdBy", "name email"],
+      ["updatedBy", "name email"],
+      ["items.productId", "name productCode category isSerialized hsnCode description"],
+    ];
+    const withPopulate = (query) => populateFields.reduce((q, [path, select]) => q.populate(path, select), query);
+
+    let purchasesPage;
+    let allFiltered;
+
+    if (isCustomSort) {
+      allFiltered = await Purchase.find(filter).lean();
+
+      // modelNumber/description for a serialized first item live on its
+      // own ProductSerial record, never on Purchase itself - resolved
+      // here across the WHOLE filtered set (not just the page about to
+      // be returned) so the sort is correct before pagination happens.
+      // description for a non-serialized first item comes from the
+      // Product master instead. Only queried when actually needed by
+      // the requested sort - every other custom-sortable field
+      // (purchasePrice/totalAmount/paidAmount/pendingAmount/
+      // serialNumber) already lives directly on the lean Purchase doc.
+      let serialPreviewBySerialNumber = new Map();
+      let productDescriptionById = new Map();
+      if (sortBy === "modelNumber" || sortBy === "description") {
+        const serialNumbers = [];
+        const productIds = [];
+        for (const p of allFiltered) {
+          const fi = (p.items || [])[0];
+          if (!fi) continue;
+          if (isSerializedItem(fi)) {
+            const sn = fi.serialNumbers?.[0]?.serialNumber;
+            if (sn) serialNumbers.push(sn);
+          } else if (fi.productId) {
+            productIds.push(fi.productId);
+          }
+        }
+        const [serials, products] = await Promise.all([
+          serialNumbers.length > 0
+            ? ProductSerial.find({ serialNumber: { $in: serialNumbers } }).select("serialNumber modelNumber description").lean()
+            : [],
+          productIds.length > 0
+            ? Product.find({ _id: { $in: productIds } }).select("description").lean()
+            : [],
+        ]);
+        serialPreviewBySerialNumber = new Map(serials.map((s) => [s.serialNumber, s]));
+        productDescriptionById = new Map(products.map((pr) => [pr._id.toString(), pr.description || ""]));
+      }
+
+      const sortValue = (p) => {
+        const fi = (p.items || [])[0];
+        if (!fi) return "";
+        switch (sortBy) {
+          case "qty":
+            return itemQuantity(fi);
+          case "purchasePrice":
+            return fi.purchasePrice || 0;
+          case "totalAmount":
+            return p.totalAmount || 0;
+          case "paidAmount":
+            return p.paidAmount || 0;
+          case "pendingAmount":
+            return p.pendingAmount || 0;
+          case "serialNumber":
+            return isSerializedItem(fi) ? (fi.serialNumbers?.[0]?.serialNumber || "") : "";
+          case "modelNumber": {
+            if (!isSerializedItem(fi)) return "";
+            const sn = fi.serialNumbers?.[0]?.serialNumber;
+            return (sn && serialPreviewBySerialNumber.get(sn)?.modelNumber) || "";
+          }
+          case "description": {
+            if (isSerializedItem(fi)) {
+              const sn = fi.serialNumbers?.[0]?.serialNumber;
+              return (sn && serialPreviewBySerialNumber.get(sn)?.description?.main) || "";
+            }
+            return productDescriptionById.get(String(fi.productId)) || "";
+          }
+          default:
+            return "";
+        }
+      };
+
+      const isNumeric = NUMERIC_SORT_FIELDS.has(sortBy);
+      const sorted = [...allFiltered].sort((a, b) => {
+        const va = sortValue(a);
+        const vb = sortValue(b);
+        return isNumeric ? order * ((va || 0) - (vb || 0)) : order * String(va).localeCompare(String(vb));
+      });
+
+      const pageIds = sorted.slice(skip, skip + limit).map((p) => p._id);
+      const idOrder = new Map(pageIds.map((id, i) => [id.toString(), i]));
+
+      const pageDocs = await withPopulate(Purchase.find({ _id: { $in: pageIds } }));
+      purchasesPage = pageDocs.sort((a, b) => idOrder.get(a._id.toString()) - idOrder.get(b._id.toString()));
+    } else {
+      [purchasesPage, allFiltered] = await Promise.all([
+        withPopulate(Purchase.find(filter)).sort(sortSpec).skip(skip).limit(limit),
+        Purchase.find(filter).lean(),
+      ]);
+    }
 
     const totalRecords = allFiltered.length;
 

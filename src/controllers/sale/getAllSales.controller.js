@@ -4,6 +4,7 @@ import Sale from "../../models/Sale.modal.js";
 import Customer from "../../models/Customer.modal.js";
 import Branch from "../../models/Branch.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
+import Product from "../../models/Product.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import paginate from "../../utils/pagination.js";
 
@@ -11,6 +12,17 @@ const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PARTIAL", "UNPAID"];
 const PROCESS_STATUS_VALUES = ["PENDING_REVIEW", "APPROVED", "REJECTED"];
+
+// Columns whose value isn't a plain top-level Sale field sortable by a
+// simple find().sort() - either it lives on the first item's own
+// subdocument (sellingPrice/serialNumber/modelNumber - all flat on
+// Sale.items[], unlike Purchase's items[]), or entirely off-document on
+// ProductSerial/Product (description for a serialized vs non-serialized
+// first item). Sorted in-memory on the full filtered set (already
+// fetched for stats anyway - see allFiltered below), mirroring
+// getAllPurchasesController's identical CUSTOM_SORT_FIELDS approach.
+const CUSTOM_SORT_FIELDS = new Set(["modelNumber", "serialNumber", "description", "sellingPrice", "totalAmount", "paidAmount", "pendingAmount"]);
+const NUMERIC_SORT_FIELDS = new Set(["sellingPrice", "totalAmount", "paidAmount", "pendingAmount"]);
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -94,6 +106,7 @@ export const getAllSalesController = async (req, res) => {
         // needed, and it sorts consistently even for sales whose
         // customer was later deleted.
         const order = sortOrder === "asc" ? 1 : -1;
+        const isCustomSort = CUSTOM_SORT_FIELDS.has(sortBy);
         const sortSpec =
             sortBy === "customer"
                 ? { "customerSnapshot.name": order, saleDate: -1 }
@@ -231,21 +244,107 @@ export const getAllSalesController = async (req, res) => {
         // code) - totalRecords now derives from the lean array's length.
         // ============================================================
 
-        const [salesPage, allFiltered] = await Promise.all([
-            Sale.find(filter)
-                .populate("customerId", "name mobile email phone")
-                .populate("branchId", "name code")
-                .populate("items.productId", "name productCode category isSerialized description")
-                .populate("items.productSerialId", "serialNumber")
-                .populate("createdBy", "name email")
-                .populate("updatedBy", "name email")
-                .populate("handledBy.userId", "name email")
-                .populate("reviewedBy", "name email")
-                .sort(sortSpec)
-                .skip(skip)
-                .limit(limit),
-            Sale.find(filter).lean(),
-        ]);
+        const populateFields = [
+            ["customerId", "name mobile email phone"],
+            ["branchId", "name code"],
+            ["items.productId", "name productCode category isSerialized description"],
+            ["items.productSerialId", "serialNumber"],
+            ["createdBy", "name email"],
+            ["updatedBy", "name email"],
+            ["handledBy.userId", "name email"],
+            ["reviewedBy", "name email"],
+        ];
+        const withPopulate = (query) => populateFields.reduce((q, [path, select]) => q.populate(path, select), query);
+
+        let salesPage;
+        let allFiltered;
+
+        if (isCustomSort) {
+            allFiltered = await Sale.find(filter).lean();
+
+            // description for a serialized first item lives on its own
+            // ProductSerial record (referenced by productSerialId), never
+            // on Sale.items[] itself - resolved here across the WHOLE
+            // filtered set (not just the page about to be returned) so
+            // the sort is correct before pagination happens. description
+            // for a non-serialized first item comes from the Product
+            // master instead. Only queried when actually needed by the
+            // requested sort - every other custom-sortable field
+            // (modelNumber/serialNumber/sellingPrice/totalAmount/
+            // paidAmount/pendingAmount) already lives directly on the
+            // lean Sale doc.
+            let serialDescriptionById = new Map();
+            let productDescriptionById = new Map();
+            if (sortBy === "description") {
+                const serialIds = [];
+                const productIds = [];
+                for (const s of allFiltered) {
+                    const fi = (s.items || [])[0];
+                    if (!fi) continue;
+                    if (fi.isSerialized) {
+                        if (fi.productSerialId) serialIds.push(fi.productSerialId);
+                    } else if (fi.productId) {
+                        productIds.push(fi.productId);
+                    }
+                }
+                const [serials, products] = await Promise.all([
+                    serialIds.length > 0
+                        ? ProductSerial.find({ _id: { $in: serialIds } }).select("description").lean()
+                        : [],
+                    productIds.length > 0
+                        ? Product.find({ _id: { $in: productIds } }).select("description").lean()
+                        : [],
+                ]);
+                serialDescriptionById = new Map(serials.map((s) => [s._id.toString(), s.description]));
+                productDescriptionById = new Map(products.map((p) => [p._id.toString(), p.description || ""]));
+            }
+
+            const sortValue = (s) => {
+                const fi = (s.items || [])[0];
+                if (!fi) return "";
+                switch (sortBy) {
+                    case "sellingPrice":
+                        return fi.sellingPrice || 0;
+                    case "totalAmount":
+                        return s.totalAmount || 0;
+                    case "paidAmount":
+                        return s.paidAmount || 0;
+                    case "pendingAmount":
+                        return s.pendingAmount || 0;
+                    case "serialNumber":
+                        return fi.isSerialized ? (fi.serialNumber || "") : "";
+                    case "modelNumber":
+                        return fi.isSerialized ? (fi.modelNumber || "") : "";
+                    case "description": {
+                        if (fi.isSerialized) {
+                            const serialId = fi.productSerialId ? String(fi.productSerialId) : null;
+                            return (serialId && serialDescriptionById.get(serialId)?.main) || "";
+                        }
+                        return productDescriptionById.get(String(fi.productId)) || "";
+                    }
+                    default:
+                        return "";
+                }
+            };
+
+            const isNumeric = NUMERIC_SORT_FIELDS.has(sortBy);
+            const sorted = [...allFiltered].sort((a, b) => {
+                const va = sortValue(a);
+                const vb = sortValue(b);
+                return isNumeric ? order * ((va || 0) - (vb || 0)) : order * String(va).localeCompare(String(vb));
+            });
+
+            const pageIds = sorted.slice(skip, skip + limit).map((s) => s._id);
+            const idOrder = new Map(pageIds.map((id, i) => [id.toString(), i]));
+
+            const pageDocs = await withPopulate(Sale.find({ _id: { $in: pageIds } }));
+            salesPage = pageDocs.sort((a, b) => idOrder.get(a._id.toString()) - idOrder.get(b._id.toString()));
+        } else {
+            [salesPage, allFiltered] = await Promise.all([
+                withPopulate(Sale.find(filter)).sort(sortSpec).skip(skip).limit(limit),
+                Sale.find(filter).lean(),
+            ]);
+        }
 
         const totalRecords = allFiltered.length;
 
