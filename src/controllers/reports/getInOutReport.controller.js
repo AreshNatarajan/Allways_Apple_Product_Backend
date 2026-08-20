@@ -83,6 +83,7 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
             type: { $literal: "Serialized" },
             date: "$purchase.purchaseDate",
             modelNumber: { $ifNull: ["$modelNumber", ""] },
+            serialNumber: { $ifNull: ["$serialNumber", ""] },
             description: { $ifNull: ["$description.main", ""] },
             qty: { $literal: 1 },
             price: { $ifNull: ["$purchasePrice", 0] },
@@ -104,12 +105,12 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
     return ProductSerial.aggregate(pipeline);
 };
 
-// Non-serialized IN rows - one per batch received. Model Number has no
-// non-serialized equivalent anywhere in this app (it's a serialized-only
-// concept), so it's always "—" via the frontend's textOr - never
-// invented here. Description comes from the Product master (shared
-// across every batch of that product, per Product.modal.js's own
-// ownership rule for non-serialized items).
+// Non-serialized IN rows - one per batch received. Model Number and
+// Serial Number have no non-serialized equivalent anywhere in this app
+// (both are serialized-only concepts), so they're always "—" via the
+// frontend's textOr - never invented here. Description comes from the
+// Product master (shared across every batch of that product, per
+// Product.modal.js's own ownership rule for non-serialized items).
 const getInRowsNonSerialized = async ({ dateRange, branchMatch }) => {
     const pipeline = [
         { $match: { ...branchMatch } },
@@ -142,6 +143,7 @@ const getInRowsNonSerialized = async ({ dateRange, branchMatch }) => {
                 type: { $literal: "Non-Serialized" },
                 date: "$purchase.purchaseDate",
                 modelNumber: { $literal: "" },
+                serialNumber: { $literal: "" },
                 description: { $ifNull: ["$product.description", ""] },
                 qty: { $ifNull: ["$quantity", 0] },
                 price: { $ifNull: ["$purchasePrice", 0] },
