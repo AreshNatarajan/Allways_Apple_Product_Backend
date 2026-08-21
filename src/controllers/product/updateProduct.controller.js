@@ -5,6 +5,7 @@ import BatchStock from "../../models/BatchStock.model.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import Inventory from "../../models/Inventory.modal.js";
 import { deriveIsSerialized } from "../../utils/deriveProductType.js";
+import { buildLaptopProductName, validateLaptopNameParts } from "../../utils/buildLaptopProductName.js";
 
 import {
     successResponse,
@@ -31,6 +32,7 @@ export const updateProductController = async (req, res) => {
             productCode,
             hsnCode,
             modelNumber,
+            nameParts,
         } = req.body;
         // Note: images/imageKeys are never accepted here - they're only
         // ever changed via POST/DELETE /:id/images. isSerialized is
@@ -52,6 +54,7 @@ export const updateProductController = async (req, res) => {
         // this update is applied.
         const nextCategory = category !== undefined ? category : product.category;
         const nextIsSerialized = deriveIsSerialized(nextCategory);
+        const isLaptopNext = nextCategory === "LAPTOP";
 
         // ✅ If serialization type is actually changing, refuse the
         // change when any downstream Batch/BatchStock/ProductSerial/
@@ -137,8 +140,51 @@ export const updateProductController = async (req, res) => {
             }
         }
 
+        // ✅ LAPTOP - structured name correction, opt-in only. A raw
+        // client-sent `name` is ignored entirely for LAPTOP (same
+        // trust-boundary reasoning as create) - `name` is only ever
+        // settable through nameParts. If nameParts wasn't sent at all
+        // (the admin didn't touch the structured fields - e.g. only
+        // toggled isActive or edited the description), `name`/
+        // `nameParts` are left completely untouched - this is the
+        // literal "do not automatically overwrite or destroy the
+        // existing value" requirement for legacy/free-text names.
+        let generatedName = null;
+        const hasNameParts = nameParts && (nameParts.productName || nameParts.series || nameParts.screenSizes);
+        if (isLaptopNext && hasNameParts) {
+            const nextModelNumberForName = modelNumber !== undefined ? modelNumber : product.modelNumber;
+            const validationError = validateLaptopNameParts({ ...nameParts, modelNumber: nextModelNumberForName });
+            if (validationError) {
+                return errorResponse(res, validationError, 400);
+            }
+
+            generatedName = buildLaptopProductName({ ...nameParts, modelNumber: nextModelNumberForName });
+
+            const existingLaptop = await Product.findOne({
+                _id: { $ne: id },
+                name: generatedName,
+                category: "LAPTOP",
+                isDeleted: false,
+            });
+            if (existingLaptop) {
+                return errorResponse(res, `A product named "${generatedName}" already exists`, 409);
+            }
+        }
+
         // ✅ Apply updates
-        if (name !== undefined) product.name = name.trim();
+        if (isLaptopNext) {
+            if (generatedName) {
+                product.name = generatedName;
+                product.nameParts = {
+                    productName: nameParts.productName,
+                    series: nameParts.series,
+                    screenSizes: nameParts.screenSizes,
+                };
+            }
+            // else: nameParts wasn't sent - name/nameParts stay exactly as they are.
+        } else if (name !== undefined) {
+            product.name = name.trim();
+        }
         if (category !== undefined) product.category = category;
         product.isSerialized = nextIsSerialized;
         if (description !== undefined) product.description = description;

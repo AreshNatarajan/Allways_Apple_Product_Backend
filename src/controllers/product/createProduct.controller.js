@@ -1,5 +1,6 @@
 import Product from "../../models/Product.modal.js";
 import { deriveIsSerialized } from "../../utils/deriveProductType.js";
+import { buildLaptopProductName, validateLaptopNameParts } from "../../utils/buildLaptopProductName.js";
 import {
     successResponse,
     errorResponse,
@@ -15,6 +16,7 @@ export const createProductController = async (req, res) => {
             hsnCode,
             description = "",
             isActive = true,
+            nameParts,
         } = req.body;
         // isSerialized is never trusted from the client - it's always
         // derived from category (ACCESSORY -> non-serialized, MOBILE/
@@ -25,8 +27,14 @@ export const createProductController = async (req, res) => {
         // S3 keys can be tied to a real product id and never trusted
         // from client-supplied JSON.
 
-        // ✅ Validation: Name and Category are required
-        if (!name || !name.trim()) {
+        const isLaptop = category?.trim() === "LAPTOP";
+
+        // ✅ Validation: Name and Category are required. LAPTOP is the
+        // one exception - its `name` is never accepted from the client
+        // at all (see the nameParts branch below, after isSerialized is
+        // derived) - a raw client-sent name for a LAPTOP is silently
+        // ignored, exactly like isSerialized itself.
+        if (!isLaptop && (!name || !name.trim())) {
             return errorResponse(
                 res,
                 "Product name is required",
@@ -91,9 +99,33 @@ export const createProductController = async (req, res) => {
             }
         }
 
+        // ✅ LAPTOP - structured name, never a client-typed one. Built
+        // fresh from nameParts + modelNumber via the shared formatter so
+        // two admins entering the "same" laptop can never end up with
+        // two differently-formatted (and therefore accidentally
+        // duplicate) Product records - see utils/buildLaptopProductName.js.
+        let generatedName = null;
+        if (isLaptop) {
+            const validationError = validateLaptopNameParts({ ...nameParts, modelNumber });
+            if (validationError) {
+                return errorResponse(res, validationError, 400);
+            }
+
+            generatedName = buildLaptopProductName({ ...nameParts, modelNumber });
+
+            const existingLaptop = await Product.findOne({
+                name: generatedName,
+                category: "LAPTOP",
+                isDeleted: false,
+            });
+            if (existingLaptop) {
+                return errorResponse(res, `A product named "${generatedName}" already exists`, 409);
+            }
+        }
+
         // ✅ Build product data
         const productData = {
-            name: name.trim(),
+            name: isLaptop ? generatedName : name.trim(),
             category: category.trim(),
             isSerialized,
             description: description.trim(),
@@ -111,6 +143,14 @@ export const createProductController = async (req, res) => {
             // Explicitly set to undefined to avoid validation issues -
             // productCode is never used by serialized products.
             productData.productCode = undefined;
+
+            if (isLaptop) {
+                productData.nameParts = {
+                    productName: nameParts.productName,
+                    series: nameParts.series,
+                    screenSizes: nameParts.screenSizes,
+                };
+            }
         } else {
             productData.productCode = productCode.toUpperCase().trim();
 

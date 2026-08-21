@@ -147,6 +147,38 @@ const productSchema = new mongoose.Schema(
     },
 
     // =========================
+    // STRUCTURED NAME (LAPTOP CATEGORY ONLY, FOR NOW)
+    // =========================
+    // Source data behind the auto-generated `name` for a LAPTOP product -
+    // see utils/buildLaptopProductName.js for the exact format. Absent/
+    // undefined for every other category, and for any LAPTOP product
+    // that predates this feature (never backfilled - see
+    // updateProduct.controller.js: `name` is only ever regenerated when
+    // the admin deliberately fills these in on an edit). modelNumber is
+    // deliberately NOT duplicated in here - the existing top-level field
+    // above is reused as-is.
+    nameParts: {
+      productName: {
+        type: String,
+        trim: true,
+        set: function (value) {
+          return typeof value === "string" ? value.trim().toUpperCase() : value;
+        },
+      },
+      series: {
+        type: String,
+        trim: true,
+        set: function (value) {
+          return typeof value === "string" ? value.trim().toUpperCase() : value;
+        },
+      },
+      screenSizes: {
+        type: [Number],
+        default: undefined,
+      },
+    },
+
+    // =========================
     // STATUS FLAGS
     // =========================
     isActive: {
