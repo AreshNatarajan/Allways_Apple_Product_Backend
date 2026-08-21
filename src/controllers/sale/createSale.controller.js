@@ -373,6 +373,17 @@ export const createSaleController = async (req, res) => {
                     finalAmount: finalAmount,
                     profit: profit,
                     profitAfterGst: profitAfterGst,
+                    // Complimentary accessories (Bag/Hub/MS Office/Case) -
+                    // serialized only, never client-trusted beyond simple
+                    // booleans (no inventory/financial implication, so no
+                    // further validation needed). Defaults all-false when
+                    // omitted, same as the schema itself.
+                    complimentary: {
+                        bag: !!item.complimentary?.bag,
+                        hub: !!item.complimentary?.hub,
+                        msOffice: !!item.complimentary?.msOffice,
+                        case: !!item.complimentary?.case,
+                    },
                 });
 
             } else {

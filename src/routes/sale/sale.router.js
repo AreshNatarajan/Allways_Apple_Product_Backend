@@ -7,6 +7,7 @@ import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
 
 // 1. Import the controller function
 import { createSaleController } from '../../controllers/sale/createSale.controller.js';
+import { updateSaleController } from '../../controllers/sale/updateSale.controller.js';
 import { getSaleByIdController } from '../../controllers/sale/getSaleById.controller.js';
 import { getAllSalesController } from '../../controllers/sale/getAllSales.controller.js';
 import { uploadSaleSelfieController } from '../../controllers/sale/uploadSaleSelfie.controller.js';
@@ -59,6 +60,9 @@ router.get('/:id', authMiddleware, getSaleByIdController);
 
 router.post('/create', authMiddleware, onlyBranchRoles, createSaleController);
 
+// Sale Edit - no role gate (all three roles can edit, mirrors Purchase's
+// identical PUT /:id); updateSaleController resets EOD review for a
+// non-SUPER_ADMIN editor and clears it for a SUPER_ADMIN editor itself.
+router.put('/:id', authMiddleware, updateSaleController);
 
-
-export default router;  
+export default router;

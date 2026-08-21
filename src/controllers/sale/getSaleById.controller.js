@@ -1,5 +1,6 @@
 // controllers/sale/getSaleById.controller.js
 import Sale from "../../models/Sale.modal.js";
+import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
 import {
     successResponse,
     errorResponse,
@@ -53,6 +54,22 @@ export const getSaleByIdController = async (req, res) => {
 
             return {
                 ...item,
+                // productId/productSerialId are populated above (for the
+                // flattened display fields below) - overridden back to
+                // plain IDs here, since Sale Edit uses these exact field
+                // names as correction/removal keys (String(item.
+                // productSerialId) etc.) and a populated sub-document
+                // would stringify to the useless literal "[object
+                // Object]" instead of the real id, silently breaking
+                // every item correction (updateSale.controller.js's own
+                // ObjectId.isValid check would then reject it and skip
+                // the correction entirely - confirmed root cause of a
+                // real "No changes detected" bug). Every populated field
+                // that's actually needed is already flattened onto its
+                // own top-level key below (productName, productCategory,
+                // productDescription, images, notes, modelNumber).
+                productId: product?._id || item.productId || null,
+                productSerialId: serial?._id || item.productSerialId || null,
                 // Product master fields - never stored flat on the item
                 // (createSale.controller.js doesn't stamp productName/
                 // category there), so these only exist via this populate.
@@ -101,9 +118,20 @@ export const getSaleByIdController = async (req, res) => {
             };
         });
 
+        // Edit history - EOD review reads this to see what changed on
+        // this sale over time (the edit already applied by the time
+        // review happens, so this is the only surviving record of
+        // before/after values). Mirrors getPurchaseById.controller.js's
+        // identical pattern.
+        const editHistory = await SaleEditHistory.find({ saleId: sale._id })
+            .sort({ createdAt: -1 })
+            .populate("editedBy", "name email")
+            .lean();
+
         const responseData = {
             ...sale,
             items: formattedItems,
+            editHistory,
             summary: {
                 totalItems,
                 serializedItems,

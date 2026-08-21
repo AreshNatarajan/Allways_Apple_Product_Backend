@@ -339,6 +339,22 @@ const saleItemSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    // ----------------------------------------------------------
+    // COMPLIMENTARY ITEMS (serialized only - never populated/shown
+    // for a non-serialized line)
+    // ----------------------------------------------------------
+    // Tracks which of the standard complimentary accessories were
+    // actually handed to the customer at sale time - staff sometimes
+    // forget one at the counter, so unchecked means "still owed to
+    // this customer", not "doesn't apply". Editable later via Sale
+    // Edit once the missed item is actually given.
+    complimentary: {
+      bag: { type: Boolean, default: false },
+      hub: { type: Boolean, default: false },
+      msOffice: { type: Boolean, default: false },
+      case: { type: Boolean, default: false },
+    },
   },
   { _id: false },
 );
@@ -663,33 +679,25 @@ salesSchema.index({ isDeleted: 1, status: 1, branchId: 1, saleDate: -1 });
 // ============================================================
 // A sale is editable while it's a DRAFT. Once it leaves DRAFT
 // (COMPLETED or CANCELLED - anything other than DRAFT represents a
-// finalized transaction, not a work-in-progress one), the fields that
-// describe what was actually sold/to-whom/for-how-much must never be
-// rewritten - that's the historical record/invoice. Payment
-// collection and status transitions (e.g. cancelling) are real,
+// finalized transaction, not a work-in-progress one), branchId can
+// never be rewritten - a sale can't retroactively move to a different
+// branch's stock. Payment collection and status transitions are real,
 // legitimate workflows that continue after completion, so those stay
-// mutable.
+// mutable, as always.
 //
-// Frozen once no longer DRAFT: items (including the legacy batches[]
-// shape on old documents - it's covered by the "items" entry below,
-// since the whole items array is one modified path), totals, GST
-// totals, customer identity/snapshot, branch, and sale date.
-// Stays mutable always: paymentStatus, paidAmount, pendingAmount,
-// paymentDetails, status itself, notes, signatureFile, isCancelled/
-// isActive, updatedBy, isDeleted/deletedAt (soft-delete stays possible
-// per this project's soft-delete-only convention).
+// items/totals/customerId/customerSnapshot/saleDate used to be frozen
+// here too, but Sale Edit (updateSale.controller.js) now needs to be
+// able to genuinely correct an already-sold line (swap the wrong
+// unit/batch, fix a price, reassign the customer, correct the date) -
+// mirrors PURCHASE_FROZEN_FIELDS's identical collapse once Purchase
+// Edit needed the same. updateSale.controller.js itself is the
+// enforcement point now: every correction reverses the old unit/batch's
+// stock effect and reapplies the new one in the same transaction (see
+// that controller for the real guardrails - unit/batch availability
+// re-validation, EOD re-review on every edit, full audit trail via
+// SaleEditHistory).
 const SALE_FROZEN_FIELDS = [
-  "items",
-  "subtotalAmount",
-  "totalDiscount",
-  "totalGstAmount",
-  "totalProfit",
-  "totalProfitAfterGst",
-  "totalAmount",
-  "customerId",
-  "customerSnapshot",
   "branchId",
-  "saleDate",
 ];
 
 // Captures the persisted status at load time, before any in-memory
