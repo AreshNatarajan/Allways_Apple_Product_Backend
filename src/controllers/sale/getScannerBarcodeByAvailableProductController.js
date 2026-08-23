@@ -90,7 +90,7 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
         })
             .populate(
                 "productId",
-                "name productCode category isSerialized hsnCode isActive isDeleted"
+                "name productCode category isSerialized hsnCode isActive isDeleted modelNumber"
             )
             .lean();
 
@@ -152,13 +152,13 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
             }
 
             // --------------------------------------------------------
-            // Pricing/GST/model - all authoritative straight off this
-            // exact physical unit's own ProductSerial record, never
-            // re-derived by searching the parent Purchase's items[] by
-            // productId (that lookup is ambiguous the moment a purchase
-            // contains two units of the same product, and modelNumber
-            // was never a Product field at all - it lives per-unit on
-            // ProductSerial, "product.modelNumber" was always undefined).
+            // Pricing/GST - authoritative straight off this exact
+            // physical unit's own ProductSerial record, never re-derived
+            // by searching the parent Purchase's items[] by productId
+            // (that lookup is ambiguous the moment a purchase contains
+            // two units of the same product). Model Number is the one
+            // exception - it always comes live from the Product master
+            // (`product.modelNumber`), never per-unit.
             // --------------------------------------------------------
 
             const purchasePrice = serialMatch.purchasePrice || 0;
@@ -200,7 +200,7 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
                     productCode: product.productCode || "",
                     category: product.category || "",
 
-                    modelNumber: serialMatch.modelNumber || "",
+                    modelNumber: product.modelNumber || "",
 
                     isSerialized: true,
 

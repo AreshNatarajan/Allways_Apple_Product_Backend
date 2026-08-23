@@ -1,9 +1,9 @@
 // controllers/inventory/getNonSerializedInventory.controller.js
-import mongoose from "mongoose";
 import BatchStock from "../../models/BatchStock.model.js";
 import Product from "../../models/Product.modal.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { resolveInventoryBranchScope } from "../../utils/resolveInventoryBranchScope.js";
 import paginate from "../../utils/pagination.js";
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -26,27 +26,24 @@ const computeStatus = (qty, threshold) => {
 export const getNonSerializedInventoryController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search = "", status = "", branchId, category, sortBy, sortOrder } = req.query;
+        const { search = "", status = "", branchId, category, productCode, sortBy, sortOrder } = req.query;
         const user = req.user;
 
         const gstConfig = await getOrCreateGstConfig();
         const threshold = gstConfig.inventory.nonSerializedLowStockThreshold;
 
-        let scopedBranchId = null;
-        if (user.role === "SUPER_ADMIN") {
-            if (branchId && branchId !== "ALL" && mongoose.Types.ObjectId.isValid(branchId)) {
-                scopedBranchId = branchId;
-            }
-        } else {
-            if (!user.branchId) {
-                return successResponse(res, "Non-serialized inventory retrieved successfully", {
-                    inventory: [],
-                    pagination: { total: 0, page: parseInt(page) || 1, limit: parseInt(limit) || 10, totalPages: 1 },
-                    filters: { search: "", status: "ALL", category: "ALL", branchId: "ALL" },
-                });
-            }
-            scopedBranchId = user.branchId;
+        const branchScope = await resolveInventoryBranchScope(user, branchId);
+        if (branchScope.error) {
+            return errorResponse(res, branchScope.error, 400);
         }
+        if (branchScope.noBranch) {
+            return successResponse(res, "Non-serialized inventory retrieved successfully", {
+                inventory: [],
+                pagination: { total: 0, page: parseInt(page) || 1, limit: parseInt(limit) || 10, totalPages: 1 },
+                filters: { search: "", status: "ALL", category: "ALL", branchId: "ALL" },
+            });
+        }
+        const scopedBranchId = branchScope.scopedBranchId;
 
         // CANCELLED batch stock rows are voided, not real historical
         // stock - excluded from the current-quantity aggregate. ACTIVE
@@ -75,6 +72,11 @@ export const getNonSerializedInventoryController = async (req, res) => {
             scoped = scoped.filter(
                 (b) => searchRegex.test(b.productCode || "") || searchRegex.test(b.productId?.name || "")
             );
+        }
+
+        // Exact-match click-to-filter on the Product Code cell.
+        if (productCode && productCode.trim() !== "") {
+            scoped = scoped.filter((b) => b.productCode === productCode.trim());
         }
 
         // ---- group by product (across every in-scope branch when
@@ -129,6 +131,9 @@ export const getNonSerializedInventoryController = async (req, res) => {
             sortBy === "sellingPrice" ? "sellingPrice" :
             sortBy === "productName" ? "productName" :
             sortBy === "quantity" ? "totalQuantity" :
+            sortBy === "productCode" ? "productCode" :
+            sortBy === "status" ? "status" :
+            sortBy === "batchCount" ? "batchCount" :
             null;
 
         if (sortKey) {
@@ -158,6 +163,7 @@ export const getNonSerializedInventoryController = async (req, res) => {
                 status: status || "ALL",
                 category: category || "ALL",
                 branchId: branchId || "ALL",
+                productCode: productCode || "",
                 sortBy: sortBy || "",
                 sortOrder: sortOrder || "desc",
             },

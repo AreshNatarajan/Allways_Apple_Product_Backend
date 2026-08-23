@@ -128,6 +128,7 @@ export const getDashboardController = async (req, res) => {
             profitTrend,
             revenueTrend,
             paymentStatus,
+            paymentMethodStats,
             stockOverview,
             sections,
             branchComparison,
@@ -147,6 +148,7 @@ export const getDashboardController = async (req, res) => {
             getProfitTrend(saleBranchMatch),
             getRevenueTrend(saleBranchMatch, purchaseBranchMatch, trendRange),
             getPaymentStatus(saleBranchMatch, purchaseBranchMatch),
+            getPaymentMethodStats(saleBranchMatch),
             getStockOverview(branchObjectId, stockThresholds),
             getPeriodSections(saleBranchMatch, purchaseBranchMatch, dateFilter),
             isSuperAdmin ? getBranchComparison(dateFilter) : Promise.resolve([]),
@@ -155,7 +157,7 @@ export const getDashboardController = async (req, res) => {
         const pendingPayments = await getPendingPayments(saleBranchMatch, purchaseBranchMatch);
         const largeOutstandingCustomers = await getLargeOutstandingCustomers(saleBranchMatch);
 
-        return successResponse(res, "Dashboard data retrieved successfully", {
+        const payload = {
             filter: {
                 branchId: selectedBranchId || null,
                 branchName,
@@ -196,6 +198,7 @@ export const getDashboardController = async (req, res) => {
             profitTrend,
             salesByCategory: sections.salesByCategory,
             paymentStatus,
+            paymentMethodStats,
             inventoryOverview: {
                 serializedProducts: stockOverview.serializedProducts,
                 nonSerializedProducts: stockOverview.nonSerializedProducts,
@@ -220,7 +223,28 @@ export const getDashboardController = async (req, res) => {
                 largeOutstandingCustomers,
                 transferPending: summary.pendingTransfers,
             },
-        });
+        };
+
+        // ---- profit is SUPER_ADMIN-only, everywhere on this screen -
+        // stripped once, centrally, right before the response goes out,
+        // rather than threading a role flag through every aggregation
+        // above. Keys are deleted entirely (never zeroed), matching the
+        // same "omit, don't fake a zero" convention already established
+        // for Inventory's cost fields (stripInventoryCostFields.js).
+        // branchComparison needs no handling here - it's already `[]`
+        // for non-SUPER_ADMIN via the existing gate a few lines up.
+        if (!isSuperAdmin) {
+            delete payload.profitSummary;
+            delete payload.profitTrend;
+            delete payload.kpis.today.profit;
+            for (const bucket of Object.values(payload.salesOverview)) delete bucket.profit;
+            for (const row of payload.charts.salesTrend) delete row.profit;
+            for (const row of payload.charts.topProducts) delete row.profit;
+            for (const row of payload.charts.topCustomers) delete row.totalProfit;
+            for (const row of payload.topSellingProducts) delete row.profit;
+        }
+
+        return successResponse(res, "Dashboard data retrieved successfully", payload);
     } catch (error) {
         console.error("Dashboard Error:", error);
         return errorResponse(res, error.message || "Failed to load dashboard", 500);
@@ -598,6 +622,24 @@ const getPaymentStatus = async (saleBranchMatch, purchaseBranchMatch) => {
     };
 };
 
+// ============================================================
+// 💳 PAYMENT METHOD BREAKDOWN - total collected by CASH/UPI/CARD/etc,
+// summed across every payment entry in Sale.paymentDetails[] (a sale
+// can be paid in installments/multiple methods, so this unwinds the
+// array rather than grouping on a single top-level field). Visible to
+// every role - operational (how customers pay), not cost/profit data.
+// ============================================================
+
+const getPaymentMethodStats = async (saleBranchMatch) => {
+    const rows = await Sale.aggregate([
+        { $match: { status: "COMPLETED", isDeleted: false, ...saleBranchMatch } },
+        { $unwind: "$paymentDetails" },
+        { $group: { _id: "$paymentDetails.paymentMethod", amount: { $sum: "$paymentDetails.amount" }, transactionCount: { $sum: 1 } } },
+        { $sort: { amount: -1 } },
+    ]);
+    return rows.map((r) => ({ paymentMethod: r._id || "CASH", amount: round2(r.amount), transactionCount: r.transactionCount }));
+};
+
 const getPendingPayments = async (saleBranchMatch, purchaseBranchMatch) => {
     const [[saleAgg], [purchaseAgg]] = await Promise.all([
         Sale.aggregate([
@@ -739,6 +781,7 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
     const [sales, purchases] = await Promise.all([
         Sale.find(saleMatch)
             .populate("items.productId", "category")
+            .populate("customerId", "name")
             .select("items customerId customerSnapshot totalAmount")
             .lean(),
         Purchase.find(purchaseMatch)
@@ -769,9 +812,22 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
             pEntry.profit += item.profit || 0;
         }
 
-        const cKey = sale.customerId ? sale.customerId.toString() : "unknown";
+        // customerId is populated above (name only) - flattened back to a
+        // plain id/name pair here, same pattern already used for
+        // vendorId/vendorName below. customerSnapshot.name is a fallback
+        // for a genuinely deleted customer only - it's never reliably
+        // set at sale-creation time (createSale.controller.js doesn't
+        // stamp it), so it must never be tried FIRST or every customer
+        // name here collapses to "Unknown Customer".
+        const customerDoc = sale.customerId;
+        const cKey = customerDoc?._id ? customerDoc._id.toString() : "unknown";
         if (!customerMap.has(cKey)) {
-            customerMap.set(cKey, { customerId: sale.customerId || null, customerName: sale.customerSnapshot?.name || "Unknown Customer", purchaseCount: 0, salesAmount: 0 });
+            customerMap.set(cKey, {
+                customerId: customerDoc?._id || null,
+                customerName: customerDoc?.name || sale.customerSnapshot?.name || "Unknown Customer",
+                purchaseCount: 0,
+                salesAmount: 0,
+            });
         }
         const custEntry = customerMap.get(cKey);
         custEntry.purchaseCount += 1;

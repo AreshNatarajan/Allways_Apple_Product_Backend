@@ -69,15 +69,15 @@ export const getPurchaseReceiveDetailsController = async (req, res) => {
       isDeleted: false,
     })
       .select(
-        "productId serialNumber modelNumber purchasePrice sellingPrice gstApplicable purchaseGstPercent purchaseGstAmount status receivedAt remarks"
+        "productId serialNumber purchasePrice sellingPrice gstApplicable purchaseGstPercent purchaseGstAmount status receivedAt remarks"
       )
-      .populate("productId", "name productCode")
+      .populate("productId", "name productCode modelNumber")
       .lean();
 
     const serializedProducts = serials.map((s) => ({
       productId: s.productId?._id || null,
       productName: s.productId?.name || "",
-      modelNumber: s.modelNumber,
+      modelNumber: s.productId?.modelNumber || "",
       serialId: s._id,
       serialNumber: s.serialNumber,
       purchasePrice: s.purchasePrice,

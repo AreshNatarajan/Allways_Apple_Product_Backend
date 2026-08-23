@@ -2,6 +2,7 @@
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canViewInventoryCost } from "../../utils/stripInventoryCostFields.js";
 
 // Movement type -> human timeline label/description. PURCHASE_RECEIVE_*
 // covers both the CENTRAL (SUPER_ADMIN, received later at a branch) and
@@ -34,7 +35,7 @@ export const getSerializedItemDetailController = async (req, res) => {
             serialNumber: serialNumber.trim().toUpperCase(),
             isDeleted: false,
         })
-            .populate("productId", "name category productCode hsnCode")
+            .populate("productId", "name category productCode hsnCode modelNumber")
             .populate({
                 path: "purchaseId",
                 select: "purchaseNumber purchaseDate vendorId vendorSnapshot",
@@ -52,17 +53,11 @@ export const getSerializedItemDetailController = async (req, res) => {
             return errorResponse(res, "Serial not found", 404);
         }
 
-        // BRANCH_ADMIN/STAFF may only view a serial that is (or was, in
-        // transit) associated with their own branch - SUPER_ADMIN is
-        // unrestricted.
-        if (user.role !== "SUPER_ADMIN") {
-            const ownBranch = user.branchId?.toString();
-            const currentBranch = item.currentBranchId?._id?.toString();
-            const assignedBranch = item.assignedBranchId?._id?.toString();
-            if (!ownBranch || (ownBranch !== currentBranch && ownBranch !== assignedBranch)) {
-                return errorResponse(res, "Access denied. You can only view serials assigned to your branch.", 403);
-            }
-        }
+        // Read-only stock visibility is open to every role, not just the
+        // serial's own branch - needed so a branch user can check another
+        // branch's stock before requesting a Transfer (mirrors the
+        // Transfer flow's own unrestricted getProductAvailabilityController).
+        // Cost fields below stay SUPER_ADMIN-only regardless of branch.
 
         // ---- timeline, built from the append-only StockMovement ledger ----
         const movements = await StockMovement.find({ serialId: item._id })
@@ -102,6 +97,22 @@ export const getSerializedItemDetailController = async (req, res) => {
         }
 
         const vendor = item.purchaseId?.vendorId || item.purchaseId?.vendorSnapshot || null;
+        const canViewCost = canViewInventoryCost(user.role);
+
+        const purchaseDetails = {
+            vendor: vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null,
+            branch: item.currentBranchId ? { _id: item.currentBranchId._id, name: item.currentBranchId.name, code: item.currentBranchId.code } : null,
+            purchaseNumber: item.purchaseId?.purchaseNumber || "-",
+            sellingPrice: item.sellingPrice || 0,
+            gstApplicable: !!item.gstApplicable,
+            hsnCode: item.hsnCode || "",
+            purchaseDate: item.purchaseId?.purchaseDate || item.createdAt,
+        };
+        if (canViewCost) {
+            purchaseDetails.purchasePrice = item.purchasePrice || 0;
+            purchaseDetails.purchaseGstPercent = item.purchaseGstPercent || 0;
+            purchaseDetails.purchaseGstAmount = item.purchaseGstAmount || 0;
+        }
 
         return successResponse(res, "Serial detail retrieved successfully", {
             _id: item._id,
@@ -122,28 +133,18 @@ export const getSerializedItemDetailController = async (req, res) => {
                 productCode: item.productId.productCode || "",
                 hsnCode: item.productId.hsnCode || "",
             } : null,
-            // This physical unit's own source of truth - description and
-            // images belong here, never on `product` above.
+            // This physical unit's own source of truth for description/
+            // images/notes - modelNumber is the one exception, always
+            // sourced live from the Product master above, never per-unit.
             serialInfo: {
-                modelNumber: item.modelNumber,
+                modelNumber: item.productId?.modelNumber || "",
                 serialNumber: item.serialNumber,
                 status: item.status,
                 description: item.description || { main: "", second: "" },
                 images: item.images || [],
                 notes: item.notes || "",
             },
-            purchaseDetails: {
-                vendor: vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null,
-                branch: item.currentBranchId ? { _id: item.currentBranchId._id, name: item.currentBranchId.name, code: item.currentBranchId.code } : null,
-                purchaseNumber: item.purchaseId?.purchaseNumber || "-",
-                purchasePrice: item.purchasePrice || 0,
-                sellingPrice: item.sellingPrice || 0,
-                gstApplicable: !!item.gstApplicable,
-                purchaseGstPercent: item.purchaseGstPercent || 0,
-                purchaseGstAmount: item.purchaseGstAmount || 0,
-                hsnCode: item.hsnCode || "",
-                purchaseDate: item.purchaseId?.purchaseDate || item.createdAt,
-            },
+            purchaseDetails,
             receivedDate: item.receivedAt || null,
             soldDate: item.soldAt || null,
             transferDate: item.transferredAt || null,

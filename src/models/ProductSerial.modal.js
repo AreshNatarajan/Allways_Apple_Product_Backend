@@ -46,19 +46,23 @@ const productSerialSchema = new mongoose.Schema(
     },
 
     // ============================================================
-    // PER-UNIT IDENTITY & PRICING
+    // PER-UNIT PRICING
     // ============================================================
     // Each physical serialized unit is independent - two units of the
-    // same product can legitimately differ in exact model and in the
-    // price they were bought/will sell for (e.g. condition-based
-    // grading on second-hand stock). These must never be assumed equal
-    // across serials sharing one purchase line.
-    modelNumber: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
+    // same product can legitimately differ in the price they were
+    // bought/will sell for (e.g. condition-based grading on second-hand
+    // stock). These must never be assumed equal across serials sharing
+    // one purchase line.
+    //
+    // Model Number is deliberately NOT stored here - it always comes
+    // live from Product.modelNumber (the master), so a correction to
+    // the master is instantly reflected on every unit with no
+    // possibility of drift. A per-unit copy used to exist but was
+    // removed: nothing on the frontend ever actually let it diverge
+    // from the master (every entry/edit table only ever displayed it
+    // read-only, auto-filled from the selected product), so the
+    // "flexibility" was unused complexity that just went stale whenever
+    // the master was corrected.
     purchasePrice: {
       type: Number,
       required: true,

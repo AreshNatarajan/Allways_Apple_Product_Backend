@@ -74,6 +74,17 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
         },
         { $unwind: "$purchase" },
         { $match: { "purchase.isDeleted": false } },
+        // Model Number no longer lives on ProductSerial - it always
+        // comes live from the Product master now.
+        {
+            $lookup: {
+                from: "products",
+                localField: "productId",
+                foreignField: "_id",
+                as: "product",
+            },
+        },
+        { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
     ];
     if (dateRange) pipeline.push({ $match: { "purchase.purchaseDate": dateRange } });
 
@@ -82,7 +93,7 @@ const getInRowsSerialized = async ({ dateRange, branchMatch }) => {
             _id: 0,
             type: { $literal: "Serialized" },
             date: "$purchase.purchaseDate",
-            modelNumber: { $ifNull: ["$modelNumber", ""] },
+            modelNumber: { $ifNull: ["$product.modelNumber", ""] },
             serialNumber: { $ifNull: ["$serialNumber", ""] },
             description: { $ifNull: ["$description.main", ""] },
             qty: { $literal: 1 },

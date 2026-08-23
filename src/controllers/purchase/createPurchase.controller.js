@@ -350,7 +350,7 @@ export const createPurchaseController = async (req, res) => {
         try {
             const populatedPurchase = await Purchase.findById(purchase._id)
                 .populate("vendorId", "name phone email address")
-                .populate("items.productId", "name productCode isSerialized hsnCode description")
+                .populate("items.productId", "name productCode isSerialized hsnCode description modelNumber")
                 .populate("createdBy", "name email")
                 // Branch is only set for a direct-receive (BRANCH_ADMIN)
                 // purchase - a CENTRAL purchase has no single physical
@@ -358,23 +358,16 @@ export const createPurchaseController = async (req, res) => {
                 // PDF generator falls back to a generic header.
                 .populate("branchId", "name address phones email");
 
-            // Model number lives on ProductSerial, not on Purchase.items
-            // itself - serialRecordsToCreate (built earlier in this same
-            // request, already in scope) carries the exact per-unit
-            // modelNumber the customer chose. Attaching it here is a
-            // display-only, in-memory enrichment of the object handed to
-            // the PDF renderer - it does not touch the persisted
-            // Purchase document, its schema, or any calculation.
-            const modelNumberBySerial = new Map(
-                serialRecordsToCreate.map((s) => [s.serialNumber, s.modelNumber])
-            );
+            // Model Number lives on the Product master, not on
+            // Purchase.items itself - flattened here as a display-only,
+            // in-memory enrichment of the object handed to the PDF
+            // renderer (does not touch the persisted Purchase document,
+            // its schema, or any calculation).
             const purchaseForInvoice = populatedPurchase.toObject();
-            purchaseForInvoice.items = purchaseForInvoice.items.map((item) => {
-                const serialNumber = item.serialNumbers?.[0]?.serialNumber;
-                return serialNumber && modelNumberBySerial.has(serialNumber)
-                    ? { ...item, modelNumber: modelNumberBySerial.get(serialNumber) }
-                    : item;
-            });
+            purchaseForInvoice.items = purchaseForInvoice.items.map((item) => ({
+                ...item,
+                modelNumber: item.productId?.modelNumber || "",
+            }));
 
             // Never overwrite an existing invoice - this is a brand new
             // purchase so systemInvoiceFile is always null here, but the

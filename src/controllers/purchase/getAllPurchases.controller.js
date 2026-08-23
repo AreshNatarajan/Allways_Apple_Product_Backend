@@ -260,7 +260,7 @@ export const getAllPurchasesController = async (req, res) => {
       ["branchId", "name code"],
       ["createdBy", "name email"],
       ["updatedBy", "name email"],
-      ["items.productId", "name productCode category isSerialized hsnCode description"],
+      ["items.productId", "name productCode category isSerialized hsnCode description modelNumber"],
     ];
     const withPopulate = (query) => populateFields.reduce((q, [path, select]) => q.populate(path, select), query);
 
@@ -270,17 +270,19 @@ export const getAllPurchasesController = async (req, res) => {
     if (isCustomSort) {
       allFiltered = await Purchase.find(filter).lean();
 
-      // modelNumber/description for a serialized first item live on its
-      // own ProductSerial record, never on Purchase itself - resolved
-      // here across the WHOLE filtered set (not just the page about to
-      // be returned) so the sort is correct before pagination happens.
-      // description for a non-serialized first item comes from the
-      // Product master instead. Only queried when actually needed by
-      // the requested sort - every other custom-sortable field
-      // (purchasePrice/totalAmount/paidAmount/pendingAmount/
-      // serialNumber) already lives directly on the lean Purchase doc.
+      // description for a serialized first item lives on its own
+      // ProductSerial record; Model Number no longer does - it always
+      // comes live from the Product master now - resolved here across
+      // the WHOLE filtered set (not just the page about to be returned)
+      // so the sort is correct before pagination happens. description
+      // for a non-serialized first item comes from the Product master
+      // instead. Only queried when actually needed by the requested
+      // sort - every other custom-sortable field (purchasePrice/
+      // totalAmount/paidAmount/pendingAmount/serialNumber) already lives
+      // directly on the lean Purchase doc.
       let serialPreviewBySerialNumber = new Map();
       let productDescriptionById = new Map();
+      let productModelNumberById = new Map();
       if (sortBy === "modelNumber" || sortBy === "description") {
         const serialNumbers = [];
         const productIds = [];
@@ -290,20 +292,20 @@ export const getAllPurchasesController = async (req, res) => {
           if (isSerializedItem(fi)) {
             const sn = fi.serialNumbers?.[0]?.serialNumber;
             if (sn) serialNumbers.push(sn);
-          } else if (fi.productId) {
-            productIds.push(fi.productId);
           }
+          if (fi.productId) productIds.push(fi.productId);
         }
         const [serials, products] = await Promise.all([
           serialNumbers.length > 0
-            ? ProductSerial.find({ serialNumber: { $in: serialNumbers } }).select("serialNumber modelNumber description").lean()
+            ? ProductSerial.find({ serialNumber: { $in: serialNumbers } }).select("serialNumber description").lean()
             : [],
           productIds.length > 0
-            ? Product.find({ _id: { $in: productIds } }).select("description").lean()
+            ? Product.find({ _id: { $in: productIds } }).select("description modelNumber").lean()
             : [],
         ]);
         serialPreviewBySerialNumber = new Map(serials.map((s) => [s.serialNumber, s]));
         productDescriptionById = new Map(products.map((pr) => [pr._id.toString(), pr.description || ""]));
+        productModelNumberById = new Map(products.map((pr) => [pr._id.toString(), pr.modelNumber || ""]));
       }
 
       const sortValue = (p) => {
@@ -324,8 +326,7 @@ export const getAllPurchasesController = async (req, res) => {
             return isSerializedItem(fi) ? (fi.serialNumbers?.[0]?.serialNumber || "") : "";
           case "modelNumber": {
             if (!isSerializedItem(fi)) return "";
-            const sn = fi.serialNumbers?.[0]?.serialNumber;
-            return (sn && serialPreviewBySerialNumber.get(sn)?.modelNumber) || "";
+            return (fi.productId && productModelNumberById.get(String(fi.productId))) || "";
           }
           case "description": {
             if (isSerializedItem(fi)) {
@@ -366,10 +367,13 @@ export const getAllPurchasesController = async (req, res) => {
     // the FIRST item's Model/Serial/Description flattened directly onto
     // the row (a purchase with more items gets a "+N more" indicator
     // instead of a nested items table - most purchases are single-item
-    // anyway). A serialized item's modelNumber/description live on its
-    // own ProductSerial record, never the item itself - batch-fetched
-    // here by serial number, same lookup shape as
-    // getPurchaseById.controller.js's serialsBySerialNumber map.
+    // anyway). A serialized item's description lives on its own
+    // ProductSerial record, never the item itself - batch-fetched here
+    // by serial number, same lookup shape as
+    // getPurchaseById.controller.js's serialsBySerialNumber map. Model
+    // Number no longer needs this lookup at all - it always comes live
+    // from the populated `items.productId.modelNumber` (Product master)
+    // set up above in populateFields.
     // ============================================================
     const firstItemSerialNumbers = [];
     for (const purchaseDoc of purchasesPage) {
@@ -379,7 +383,7 @@ export const getAllPurchasesController = async (req, res) => {
     }
     const firstItemSerials = firstItemSerialNumbers.length > 0
       ? await ProductSerial.find({ serialNumber: { $in: firstItemSerialNumbers } })
-          .select("serialNumber modelNumber description")
+          .select("serialNumber description")
           .lean()
       : [];
     const serialPreviewByNumber = new Map(firstItemSerials.map((s) => [s.serialNumber, s]));
@@ -464,7 +468,7 @@ export const getAllPurchasesController = async (req, res) => {
         if (isSerializedItem(firstItem)) {
           const sn = firstItem.serialNumbers?.[0]?.serialNumber;
           const preview = sn ? serialPreviewByNumber.get(sn) : null;
-          modelNumber = preview?.modelNumber || "-";
+          modelNumber = firstItem.productId?.modelNumber || "-";
           serialNumber = sn || "-";
           smallDescription = preview?.description?.main || "";
         } else {

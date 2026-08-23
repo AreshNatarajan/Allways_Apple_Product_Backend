@@ -350,7 +350,7 @@ export const createSaleController = async (req, res) => {
                     productId: product._id,
                     productName: product.name || "",
                     productCode: product.productCode || "",
-                    modelNumber: serialRecord.modelNumber || "",
+                    modelNumber: product.modelNumber || "",
                     productSerialId: item.productSerialId,
                     serialNumber: item.serialNumber,
                     isSerialized: true,

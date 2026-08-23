@@ -348,7 +348,6 @@ export const updatePurchaseController = async (req, res) => {
             if (changingProduct) {
                 changes.push({ field: `item:${oldSerialNumber}:product`, label: `Product (${oldSerialNumber})`, oldValue: oldProductName || String(serial.productId), newValue: newProduct.name });
                 serial.productId = newProduct._id;
-                serial.modelNumber = newProduct.modelNumber || serial.modelNumber;
                 serial.hsnCode = newProduct.hsnCode;
             }
             if (changingSerial) {

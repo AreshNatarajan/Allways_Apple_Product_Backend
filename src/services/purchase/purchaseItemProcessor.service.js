@@ -190,9 +190,12 @@ export const prepareItems = async ({
                 return { error: `Item ${i + 1}: ${product.name} - a serial number is required (one physical unit per item)` };
             }
 
-            const modelNumber = (item.modelNumber || "").trim();
-            if (!modelNumber) {
-                return { error: `Item ${i + 1}: ${product.name} - a model number is required for each serialized unit` };
+            // Model Number is never taken from the client - it always
+            // comes live from the product master (ProductSerial no
+            // longer stores its own copy), same defensive-guard shape as
+            // the hsnCode check right below.
+            if (!product.modelNumber || !product.modelNumber.trim()) {
+                return { error: `${product.name} has no Model Number set on the product master - update the product before purchasing` };
             }
 
             if (!product.hsnCode || !product.hsnCode.trim()) {
@@ -230,7 +233,6 @@ export const prepareItems = async ({
             serialRecordsToCreate.push({
                 productId: product._id,
                 serialNumber,
-                modelNumber,
                 destinationBranchId,
                 isDirectReceive,
                 purchasePrice,
@@ -536,7 +538,6 @@ export const commitItemInventory = async ({
                 productId: serialData.productId,
                 purchaseId: purchase._id,
                 serialNumber: serialData.serialNumber,
-                modelNumber: serialData.modelNumber,
                 purchasePrice: serialData.purchasePrice,
                 sellingPrice: serialData.sellingPrice,
                 status: serialData.isDirectReceive ? "AVAILABLE" : "ASSIGNED",

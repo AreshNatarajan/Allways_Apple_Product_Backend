@@ -35,7 +35,7 @@ export const getPurchaseByIdController = async (req, res) => {
             .populate("createdBy", "name email")
             .populate("updatedBy", "name email")
             .populate("reviewedBy", "name email")
-            .populate("items.productId", "name productCode category isSerialized hsnCode description")
+            .populate("items.productId", "name productCode category isSerialized hsnCode description modelNumber")
             .populate("paymentDetails.handledBy.userId", "name email")
             .lean();
 
@@ -50,7 +50,7 @@ export const getPurchaseByIdController = async (req, res) => {
         const serials = await ProductSerial.find({
             purchaseId: purchase._id,
         })
-            .select("productId serialNumber modelNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt description notes mdm images")
+            .select("productId serialNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt description notes mdm images")
             .populate("currentBranchId", "name code")
             .populate("assignedBranchId", "name code")
             .lean();
@@ -222,7 +222,7 @@ export const getPurchaseByIdController = async (req, res) => {
                 serialDetails = matchedSerial ? [{
                     _id: matchedSerial._id,
                     serialNumber: matchedSerial.serialNumber,
-                    modelNumber: matchedSerial.modelNumber,
+                    modelNumber: product.modelNumber || "",
                     purchasePrice: matchedSerial.purchasePrice,
                     sellingPrice: matchedSerial.sellingPrice,
                     gstApplicable: matchedSerial.gstApplicable,

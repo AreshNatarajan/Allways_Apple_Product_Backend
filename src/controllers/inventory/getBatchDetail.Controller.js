@@ -2,9 +2,10 @@
 import mongoose from "mongoose";
 import BatchStock from "../../models/BatchStock.model.js";
 import Product from "../../models/Product.modal.js";
-import Branch from "../../models/Branch.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canViewInventoryCost } from "../../utils/stripInventoryCostFields.js";
+import { resolveActiveBranch } from "../../services/branchValidation.service.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -37,21 +38,20 @@ export const getBatchDetailController = async (req, res) => {
             return errorResponse(res, "Invalid branch ID", 400);
         }
 
-        if (user.role !== "SUPER_ADMIN") {
-            if (!user.branchId || user.branchId.toString() !== branchId) {
-                return errorResponse(res, "Access denied. You can only view inventory for your own branch.", 403);
-            }
+        // Read-only stock visibility is open to every role, not just the
+        // batch's own branch - needed so a branch user can check another
+        // branch's stock before requesting a Transfer (mirrors the
+        // Transfer flow's own unrestricted getProductAvailabilityController).
+        // Cost fields below stay SUPER_ADMIN-only regardless of branch.
+        const { branch, error: branchError } = await resolveActiveBranch(branchId);
+        if (branchError) {
+            return errorResponse(res, branchError, 400);
         }
 
         const product = await Product.findOne({ _id: productId, isDeleted: false })
             .select("name productCode category description hsnCode");
         if (!product) {
             return errorResponse(res, "Product not found", 404);
-        }
-
-        const branch = await Branch.findById(branchId).select("name code");
-        if (!branch) {
-            return errorResponse(res, "Branch not found", 404);
         }
 
         const batchStocks = await BatchStock.find({ productId, branchId })
@@ -61,6 +61,8 @@ export const getBatchDetailController = async (req, res) => {
             })
             .sort({ createdAt: -1 })
             .lean();
+
+        const canViewCost = canViewInventoryCost(user.role);
 
         const batches = batchStocks.map((b) => {
             // Real, additive, per-unit input GST captured at purchase
@@ -73,7 +75,7 @@ export const getBatchDetailController = async (req, res) => {
                 ? round2((basePrice * purchaseGstPercent) / 100)
                 : 0;
 
-            return {
+            const row = {
                 batchId: b.batchId,
                 batchStockId: b._id,
                 batchNumber: b.batchNumber,
@@ -84,16 +86,21 @@ export const getBatchDetailController = async (req, res) => {
                 availableQuantity: b.availableQuantity || 0,
                 soldQuantity: b.soldQuantity || 0,
                 damagedQuantity: b.damagedQuantity || 0,
-                purchasePrice: basePrice,
-                purchaseGstPercent,
-                purchaseGstAmount,
-                // Base + GST, per unit - the actual landed cost of one
-                // unit of this batch.
-                purchaseTotalPrice: round2(basePrice + purchaseGstAmount),
                 sellingPrice: b.sellingPrice || 0,
                 gstApplicable: !!b.gstApplicable,
                 status: b.status,
             };
+
+            if (canViewCost) {
+                row.purchasePrice = basePrice;
+                row.purchaseGstPercent = purchaseGstPercent;
+                row.purchaseGstAmount = purchaseGstAmount;
+                // Base + GST, per unit - the actual landed cost of one
+                // unit of this batch.
+                row.purchaseTotalPrice = round2(basePrice + purchaseGstAmount);
+            }
+
+            return row;
         });
 
         const totalQuantity = batches.reduce((sum, b) => sum + b.quantity, 0);

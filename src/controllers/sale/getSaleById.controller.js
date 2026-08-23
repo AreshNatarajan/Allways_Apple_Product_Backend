@@ -25,7 +25,7 @@ export const getSaleByIdController = async (req, res) => {
             .populate("createdBy", "name email role")
             .populate("updatedBy", "name email role")
             .populate("items.productId", "name category description productCode hsnCode isSerialized")
-            .populate("items.productSerialId", "serialNumber modelNumber status description images notes")
+            .populate("items.productSerialId", "serialNumber status description images notes")
             .populate("paymentDetails.handledBy.userId", "name email role")
             .populate("handledBy.userId", "name email role")
             .populate("reviewedBy", "name email")
@@ -91,12 +91,12 @@ export const getSaleByIdController = async (req, res) => {
                 notes: item.isSerialized ? (serial?.notes || "") : "",
                 productCode: product?.productCode || item.productCode || "",
 
-                // Model Number is serialized-only, and the historically
-                // accurate value lives per-unit on ProductSerial (two
-                // serials of the same product can legitimately have
-                // different models) - never the current Product master
-                // value, which can drift after the sale.
-                modelNumber: item.isSerialized ? (serial?.modelNumber || item.modelNumber || "") : "",
+                // Model Number is serialized-only - Sale.items[].modelNumber
+                // is its own frozen snapshot (stamped from the Product
+                // master at the moment of sale, same freeze convention as
+                // GST rates elsewhere), used as-is. ProductSerial no
+                // longer carries a competing value of its own to prefer.
+                modelNumber: item.isSerialized ? (item.modelNumber || "") : "",
 
                 // Serial Number: prefer the frozen value stored on the
                 // item itself (the historical record), falling back to
