@@ -20,17 +20,18 @@ const transferItemSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Requested quantity (set once at creation, never changed afterward -
-    // packing/receiving progress is tracked against this fixed target).
+    // serials.length (serialized) or the sum of sourceBatches[].quantity
+    // (non-serialized) - fixed at creation, never changed afterward.
     quantity: {
       type: Number,
       default: 1,
       min: 1,
     },
-    // Populated during Phase 2 packing (never at request time - Phase 1
-    // only ever collects a quantity, per the "do not display individual
-    // serial numbers yet" rule). Each entry here IS a physically packed
-    // unit.
+    // ============================================================
+    // SERIALIZED - the exact physical units chosen at creation time
+    // (direct selection from the source branch's available inventory,
+    // never a later scan step). condition is set once, at RECEIVED.
+    // ============================================================
     serials: [
       {
         serialNumber: {
@@ -41,16 +42,6 @@ const transferItemSchema = new mongoose.Schema(
           type: mongoose.Schema.Types.ObjectId,
           ref: "ProductSerial",
         },
-        isPacked: {
-          type: Boolean,
-          default: false,
-        },
-        packedAt: {
-          type: Date,
-          default: null,
-        },
-        // Set only once this specific unit has actually been received at
-        // the destination - null while still in transit.
         condition: {
           type: String,
           enum: ["GOOD", "DAMAGED", "MISSING", null],
@@ -60,34 +51,21 @@ const transferItemSchema = new mongoose.Schema(
           type: String,
           default: "",
         },
-        isReceived: {
-          type: Boolean,
-          default: false,
-        },
-        isRejected: {
-          type: Boolean,
-          default: false,
-        },
-        notes: {
-          type: String,
-          default: "",
-        },
       },
     ],
     // ============================================================
-    // NON-SERIALIZED PACK/RECEIVE TRACKING
+    // NON-SERIALIZED - the exact source batch(es) + quantity chosen at
+    // creation time (this app has no FIFO auto-consumption anywhere -
+    // the user always picks which batch(es) a transfer draws from,
+    // same rule Sale already follows). receivedGood/Damaged/Missing are
+    // set once, at RECEIVED, and must sum to at most `quantity`.
     // ============================================================
-    // Running total packed so far (Phase 2) - never exceeds `quantity`.
-    packedQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    // Which real BatchStock rows the packed quantity was actually taken
-    // from at the source branch - needed so receiving can credit the
-    // exact same batch identity at the destination branch.
-    packedBatches: [
+    sourceBatches: [
       {
+        batchStockId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "BatchStock",
+        },
         batchId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Batch",
@@ -100,59 +78,27 @@ const transferItemSchema = new mongoose.Schema(
           type: Number,
           min: 1,
         },
-        // Per-batch Phase 3 progress - "Arrived Qty <= Packed Qty" is
-        // validated against THIS specific batch's own packed quantity,
-        // not the item total, since one item can be packed from more
-        // than one batch.
-        receivedQuantity: {
+        receivedGoodQuantity: {
           type: Number,
           default: 0,
           min: 0,
         },
-        damagedQuantity: {
+        receivedDamagedQuantity: {
           type: Number,
           default: 0,
           min: 0,
         },
-        missingQuantity: {
+        receivedMissingQuantity: {
           type: Number,
           default: 0,
           min: 0,
+        },
+        remarks: {
+          type: String,
+          default: "",
         },
       },
     ],
-    // Phase 3 outcome buckets - receivedQuantity is GOOD only (matches
-    // the Pending Receive module's identical convention), damaged/missing
-    // are new, rejectedQuantity is kept for backward compatibility with
-    // any already-stored documents/virtuals.
-    receivedQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    damagedQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    missingQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    rejectedQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    rejectedReason: {
-      type: String,
-      default: "",
-    },
-    remarks: {
-      type: String,
-      default: "",
-    },
   },
   { _id: false }
 );
@@ -185,41 +131,32 @@ const transferSchema = new mongoose.Schema(
     summary: {
       totalItems: { type: Number, default: 0 },
       totalQuantity: { type: Number, default: 0 },
-      totalPacked: { type: Number, default: 0 },
       totalReceived: { type: Number, default: 0 },
       totalDamaged: { type: Number, default: 0 },
       totalMissing: { type: Number, default: 0 },
-      totalRejected: { type: Number, default: 0 },
-    },
-    reason: {
-      type: String,
-      enum: [
-        "STOCK_TRANSFER",
-        "CUSTOMER_REQUEST",
-        "BRANCH_REPLENISHMENT",
-        "DAMAGE_REPLACEMENT",
-        "URGENT_REQUIREMENT",
-        "OTHER",
-      ],
-      default: "STOCK_TRANSFER",
-    },
-    reasonText: {
-      type: String,
-      default: "",
     },
     notes: {
       type: String,
       default: "",
     },
-    // Final business flow: REQUESTED -> ACCEPTED -> PACKED -> DISPATCHED
-    // -> COMPLETED, or CANCELLED from any non-terminal state. RECEIVED is
-    // kept in the enum only for backward compatibility with any
-    // already-stored documents - new code always resolves a completed
-    // receive straight to COMPLETED (see receiveTransfer.controller.js).
+    // Direct-selection business flow, no request/approval step:
+    // PROCESSING (created - items are RESERVED right here, see
+    // createTransfer.controller.js) -> PACKED (pure status flag, source
+    // branch has physically gathered the items) -> DISPATCHED (pure
+    // status flag too - flips each reserved serial to IN_TRANSIT, a
+    // ProductSerial-level physical marker, not a separate stage here) ->
+    // RECEIVED (destination branch credits its own inventory).
+    // CANCELLED is reachable only from
+    // PROCESSING/PACKED, since nothing has physically left the source
+    // branch yet at either of those stages - cancelling needs no stock
+    // reversal (PROCESSING/PACKED both happen before DISPATCH, which is
+    // the moment stock actually leaves - reserved immediately at
+    // creation, see createTransfer.controller.js, so cancelling from
+    // either of these two stages reverses that reservation).
     status: {
       type: String,
-      enum: ["REQUESTED", "ACCEPTED", "PACKED", "DISPATCHED", "RECEIVED", "COMPLETED", "CANCELLED"],
-      default: "REQUESTED",
+      enum: ["PROCESSING", "PACKED", "DISPATCHED", "RECEIVED", "CANCELLED"],
+      default: "PROCESSING",
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -230,36 +167,6 @@ const transferSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Which branch this request "belongs to" for the My Requests /
-    // Other Requests split - the requesting user's own branch at
-    // creation time (for SUPER_ADMIN, who has no branch of their own,
-    // this is the destination branch, i.e. whichever branch the stock
-    // is actually being requested for). Never recomputed from source/
-    // destination later - fixed at creation like createdBy itself.
-    createdByBranchId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      default: null,
-    },
-    createdByBranchName: {
-      type: String,
-      default: null,
-    },
-    // ✅ ACCEPTED by (NEW)
-    acceptedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    acceptedByName: {
-      type: String,
-      default: null,
-    },
-    acceptedAt: {
-      type: Date,
-      default: null,
-    },
-    // Packed by (source branch, Phase 2 completion)
     packedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -273,7 +180,6 @@ const transferSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // ✅ DISPATCHED by
     dispatchedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -287,7 +193,6 @@ const transferSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // ✅ RECEIVED by (NEW - replaces completedBy)
     receivedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -301,7 +206,6 @@ const transferSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // ✅ CANCELLED by
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -342,7 +246,9 @@ const transferSchema = new mongoose.Schema(
   }
 );
 
-// ✅ Indexes
+// ============================================================
+// INDEXES
+// ============================================================
 transferSchema.index({ transferNumber: 1 });
 transferSchema.index({ sourceBranchId: 1, status: 1 });
 transferSchema.index({ destinationBranchId: 1, status: 1 });
@@ -350,7 +256,9 @@ transferSchema.index({ status: 1, createdAt: -1 });
 transferSchema.index({ createdBy: 1, createdAt: -1 });
 transferSchema.index({ isDeleted: 1 });
 
-// ✅ Virtual fields
+// ============================================================
+// VIRTUALS
+// ============================================================
 transferSchema.virtual("totalItems").get(function () {
   return this.items.length;
 });
@@ -359,71 +267,41 @@ transferSchema.virtual("totalQuantity").get(function () {
   return this.items.reduce((sum, item) => sum + item.quantity, 0);
 });
 
-transferSchema.virtual("totalReceived").get(function () {
-  return this.items.reduce((sum, item) => {
-    if (item.isSerialized) {
-      return sum + (item.serials?.filter(s => s.isReceived).length || 0);
-    }
-    return sum + (item.receivedQuantity || 0);
-  }, 0);
-});
-
-transferSchema.virtual("totalRejected").get(function () {
-  return this.items.reduce((sum, item) => {
-    if (item.isSerialized) {
-      return sum + (item.serials?.filter(s => s.isRejected).length || 0);
-    }
-    return sum + (item.rejectedQuantity || 0);
-  }, 0);
-});
-
-// ✅ PRE-SAVE MIDDLEWARE
-// Number generation lives solely in createTransfer.controller.js (via
-// services/documentNumber.service.js, prefix read from Global
-// Settings) - transferNumber is always set before Transfer.create() is
-// called, so no fallback generator belongs here. A stray duplicate
-// used to live in this hook, hardcoding "TRF-" and bypassing the
-// configurable prefix entirely; removed since it was dead code that
-// only ever wrote to a required field the controller already sets.
+// ============================================================
+// PRE-SAVE - keep `summary` in sync with `items[]` on every save.
+// transferNumber is always set by createTransfer.controller.js before
+// Transfer.create() is called (via services/documentNumber.service.js) -
+// no fallback generator belongs here.
+// ============================================================
 transferSchema.pre("save", async function () {
-  // ✅ Update summary
   this.summary.totalItems = this.items.length;
   this.summary.totalQuantity = this.items.reduce((sum, item) => sum + item.quantity, 0);
 
-  let totalPacked = 0;
   let totalReceived = 0;
   let totalDamaged = 0;
   let totalMissing = 0;
-  let totalRejected = 0;
 
-  this.items.forEach(item => {
+  this.items.forEach((item) => {
     if (item.isSerialized) {
-      totalPacked += item.serials?.filter(s => s.isPacked).length || 0;
-      totalReceived += item.serials?.filter(s => s.condition === "GOOD").length || 0;
-      totalDamaged += item.serials?.filter(s => s.condition === "DAMAGED").length || 0;
-      totalMissing += item.serials?.filter(s => s.condition === "MISSING").length || 0;
-      totalRejected += item.serials?.filter(s => s.isRejected).length || 0;
+      totalReceived += item.serials?.filter((s) => s.condition === "GOOD").length || 0;
+      totalDamaged += item.serials?.filter((s) => s.condition === "DAMAGED").length || 0;
+      totalMissing += item.serials?.filter((s) => s.condition === "MISSING").length || 0;
     } else {
-      totalPacked += item.packedQuantity || 0;
-      totalReceived += item.receivedQuantity || 0;
-      totalDamaged += item.damagedQuantity || 0;
-      totalMissing += item.missingQuantity || 0;
-      totalRejected += item.rejectedQuantity || 0;
+      (item.sourceBatches || []).forEach((b) => {
+        totalReceived += b.receivedGoodQuantity || 0;
+        totalDamaged += b.receivedDamagedQuantity || 0;
+        totalMissing += b.receivedMissingQuantity || 0;
+      });
     }
   });
 
-  this.summary.totalPacked = totalPacked;
   this.summary.totalReceived = totalReceived;
   this.summary.totalDamaged = totalDamaged;
   this.summary.totalMissing = totalMissing;
-  this.summary.totalRejected = totalRejected;
 });
 
-// ✅ Ensure virtuals are included in JSON output
 transferSchema.set("toJSON", { virtuals: true });
 transferSchema.set("toObject", { virtuals: true });
 
 const Transfer = mongoose.model("Transfer", transferSchema);
 export default Transfer;
-
-

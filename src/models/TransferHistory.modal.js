@@ -12,17 +12,17 @@ const transferHistorySchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Final business flow action set - PACKED and COMPLETED added for the
-    // Accept -> Pack -> Dispatch -> Receive(-> Completed) workflow.
+    // Direct-selection business flow action set - no ACCEPTED/COMPLETED
+    // (request/approval concept removed), no IN_TRANSIT (DISPATCHED
+    // already means "left the source branch" - a separate stage for
+    // "en route" was redundant with it).
     action: {
       type: String,
       enum: [
         "CREATED",
-        "ACCEPTED",
         "PACKED",
         "DISPATCHED",
         "RECEIVED",
-        "COMPLETED",
         "CANCELLED",
         "DELETED",
       ],
@@ -30,12 +30,12 @@ const transferHistorySchema = new mongoose.Schema(
     },
     fromStatus: {
       type: String,
-      enum: ["REQUESTED", "ACCEPTED", "PACKED", "DISPATCHED", "RECEIVED", "COMPLETED", "CANCELLED"],
+      enum: ["PROCESSING", "PACKED", "DISPATCHED", "RECEIVED", "CANCELLED"],
       default: null,
     },
     toStatus: {
       type: String,
-      enum: ["REQUESTED", "ACCEPTED", "PACKED", "DISPATCHED", "RECEIVED", "COMPLETED", "CANCELLED"],
+      enum: ["PROCESSING", "PACKED", "DISPATCHED", "RECEIVED", "CANCELLED"],
       default: null,
     },
     // ✅ Track which items were affected
@@ -111,12 +111,10 @@ transferHistorySchema.statics.logHistory = async function({
 // ✅ Instance method for UI formatting
 transferHistorySchema.methods.getFormattedHistory = function() {
   const actionLabels = {
-    CREATED: "Requested",
-    ACCEPTED: "Accepted",
+    CREATED: "Created",
     PACKED: "Packed",
     DISPATCHED: "Dispatched",
     RECEIVED: "Received",
-    COMPLETED: "Completed",
     CANCELLED: "Cancelled",
     DELETED: "Deleted",
   };

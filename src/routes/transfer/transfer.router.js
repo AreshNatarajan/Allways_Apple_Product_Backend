@@ -3,38 +3,26 @@ const router = express.Router();
 
 import authMiddleware from "../../middleware/authMiddleware.js";
 
-import { getProductAvailabilityController } from '../../controllers/transfer/getProductAvailability.controller.js'
-
-import { createTransferController } from '../../controllers/transfer/createTransfer.controller.js'
-
-import { getPendingTransfersController } from "../../controllers/transfer/getPendingTransfers.controller.js";
-
+import { getProductAvailabilityController } from "../../controllers/transfer/getProductAvailability.controller.js";
+import { getTransferUnitsController } from "../../controllers/transfer/getTransferUnits.controller.js";
+import { createTransferController } from "../../controllers/transfer/createTransfer.controller.js";
+import { getAllTransfersController } from "../../controllers/transfer/getAllTransfers.controller.js";
 import { getTransferByIdController } from "../../controllers/transfer/getTransferById.controller.js";
-
-import { updateTransferStatusController } from "../../controllers/transfer/updateTransferStatus.ontroller.js";
-
-import { getTransferHistoryController } from '../../controllers/transfer/getTransferHistory.controller.js'
-
+import { updateTransferStatusController } from "../../controllers/transfer/updateTransferStatus.controller.js";
 import { getTransferHistoryByIdController } from "../../controllers/transfer/getTransferHistoryById.controller.js";
-
-import { packTransferController } from "../../controllers/transfer/packTransfer.controller.js";
-
 import { receiveTransferController } from "../../controllers/transfer/receiveTransfer.controller.js";
 
-
-
-router.get('/history', authMiddleware, getTransferHistoryController)
-
+// Direct-selection flow - no request/approval, no scanning. Every
+// role check is inline inside each controller (source branch only for
+// pack/dispatch, destination branch only for receive, SUPER_ADMIN
+// unrestricted), matching this app's existing convention of never
+// gating Transfer routes at the router level.
 
 router.get("/products/available", authMiddleware, getProductAvailabilityController);
-
+router.get("/products/:productId/units", authMiddleware, getTransferUnitsController);
 
 router.post("/", authMiddleware, createTransferController);
-
-
-router.get("/pending", authMiddleware, getPendingTransfersController);
-
-
+router.get("/", authMiddleware, getAllTransfersController);
 
 router.get("/:id", authMiddleware, getTransferByIdController);
 
@@ -45,11 +33,7 @@ router.get("/:id/timeline", authMiddleware, getTransferHistoryByIdController);
 
 router.put("/:id/status", authMiddleware, updateTransferStatusController);
 
-// Phase 2 - Source Branch packing (scan/manual serial + batch entry).
-router.post("/:id/pack", authMiddleware, packTransferController);
-
-// Phase 3 - Destination Branch receive (GOOD/DAMAGED/MISSING + remarks).
+// Destination Branch receive - single-shot GOOD/DAMAGED/MISSING review.
 router.post("/:id/receive", authMiddleware, receiveTransferController);
-
 
 export default router;

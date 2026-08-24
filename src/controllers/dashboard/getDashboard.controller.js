@@ -30,9 +30,10 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  *   every `$sum:"$profit"` aggregation always summed to 0.
  * - Sale.items has no `totalPrice` field (that name only exists on
  *   Purchase items) - the real field is `items.finalAmount`.
- * - Transfer.status has no "PENDING" enum value (real enum: REQUESTED/
- *   ACCEPTED/DISPATCHED/RECEIVED/CANCELLED) - the old `$in:["PENDING",
- *   "DISPATCHED"]` filter silently matched DISPATCHED only.
+ * - Transfer.status has no "PENDING" enum value (real enum: PROCESSING/
+ *   PACKED/DISPATCHED/RECEIVED/CANCELLED) - "in flight, not yet
+ *   received" is DISPATCHED (stock already left the source branch,
+ *   reserved at creation - see createTransfer.controller.js).
  * - Low stock read the legacy Inventory collection; migrated to
  *   ProductSerial/BatchStock (same threshold convention already
  *   established in inventory/getInventoryDashboard.controller.js: a
@@ -341,7 +342,7 @@ const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId) 
         ? { $or: [{ sourceBranchId: branchObjectId }, { destinationBranchId: branchObjectId }] }
         : {};
     // Real Transfer.status enum has no "PENDING" value - DISPATCHED is
-    // the correct "in flight, not yet received" state.
+    // the "in flight, not yet received" state.
     const pendingTransfers = await Transfer.countDocuments({ ...transferFilter, status: "DISPATCHED", isDeleted: false });
 
     return {

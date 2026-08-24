@@ -50,11 +50,9 @@ export const getTransferHistoryByIdController = async (req, res) => {
       lastAction: history[history.length - 1]?.performedAt || null,
       actions: {
         created: history.filter((h) => h.action === "CREATED").length,
-        accepted: history.filter((h) => h.action === "ACCEPTED").length,
         packed: history.filter((h) => h.action === "PACKED").length,
         dispatched: history.filter((h) => h.action === "DISPATCHED").length,
         received: history.filter((h) => h.action === "RECEIVED").length,
-        completed: history.filter((h) => h.action === "COMPLETED").length,
         cancelled: history.filter((h) => h.action === "CANCELLED").length,
         deleted: history.filter((h) => h.action === "DELETED").length,
       },
@@ -73,15 +71,12 @@ export const getTransferHistoryByIdController = async (req, res) => {
 
 const getActionLabel = (action) => {
   const labels = {
-    CREATED: "Requested",
-    ACCEPTED: "Accepted",
+    CREATED: "Created",
     PACKED: "Packed",
     DISPATCHED: "Dispatched",
     RECEIVED: "Received",
-    COMPLETED: "Completed",
     CANCELLED: "Cancelled",
     DELETED: "Deleted",
-    UPDATED: "Updated",
   };
   return labels[action] || action;
 };

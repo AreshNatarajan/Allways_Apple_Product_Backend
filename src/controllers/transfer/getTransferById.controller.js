@@ -12,7 +12,6 @@ export const getTransferByIdController = async (req, res) => {
       .populate("sourceBranchId", "name code address phone")
       .populate("destinationBranchId", "name code address phone")
       .populate("createdBy", "name email")
-      .populate("acceptedBy", "name email")
       .populate("packedBy", "name email")
       .populate("dispatchedBy", "name email")
       .populate("receivedBy", "name email")
@@ -23,10 +22,9 @@ export const getTransferByIdController = async (req, res) => {
       return errorResponse(res, "Transfer not found", 404);
     }
 
-    // Access check - SUPER_ADMIN sees everything; BRANCH_ADMIN/STAFF
-    // may only view a transfer that actually involves their own branch
-    // (either side). The previous version only checked this for
-    // BRANCH_ADMIN, leaving STAFF with no restriction at all - fixed.
+    // Access check - SUPER_ADMIN sees everything; BRANCH_ADMIN/STAFF may
+    // only view a transfer that actually involves their own branch
+    // (either side).
     const userBranchId = user?.branchId?.toString();
     const sourceBranchId = transfer.sourceBranchId?._id?.toString() || transfer.sourceBranchId?.toString();
     const destBranchId = transfer.destinationBranchId?._id?.toString() || transfer.destinationBranchId?.toString();
@@ -37,32 +35,19 @@ export const getTransferByIdController = async (req, res) => {
       }
     }
 
-    // ✅ Progress
-    let totalQuantity = 0;
-    let totalPacked = 0;
-    let totalReceived = 0;
     let totalDamaged = 0;
     let totalMissing = 0;
-
     for (const item of transfer.items) {
-      totalQuantity += item.quantity || 0;
-
       if (item.isSerialized) {
-        totalPacked += item.serials?.filter((s) => s.isPacked).length || 0;
-        totalReceived += item.serials?.filter((s) => s.condition === "GOOD").length || 0;
         totalDamaged += item.serials?.filter((s) => s.condition === "DAMAGED").length || 0;
         totalMissing += item.serials?.filter((s) => s.condition === "MISSING").length || 0;
       } else {
-        totalPacked += item.packedQuantity || 0;
-        totalReceived += item.receivedQuantity || 0;
-        totalDamaged += item.damagedQuantity || 0;
-        totalMissing += item.missingQuantity || 0;
+        (item.sourceBatches || []).forEach((b) => {
+          totalDamaged += b.receivedDamagedQuantity || 0;
+          totalMissing += b.receivedMissingQuantity || 0;
+        });
       }
     }
-
-    const processedQuantity = totalReceived + totalDamaged + totalMissing;
-    const packedPercentage = totalQuantity > 0 ? Math.round((totalPacked / totalQuantity) * 100) : 0;
-    const receivedPercentage = totalPacked > 0 ? Math.round((processedQuantity / totalPacked) * 100) : 0;
 
     const history = await TransferHistory.find({ transferId: transfer._id })
       .sort({ performedAt: -1 })
@@ -101,34 +86,20 @@ export const getTransferByIdController = async (req, res) => {
         isSerialized: item.isSerialized,
         quantity: item.quantity,
         serials: item.serials || [],
-        packedQuantity: item.isSerialized ? item.serials.length : item.packedQuantity || 0,
-        packedBatches: item.packedBatches || [],
-        receivedQuantity: item.receivedQuantity || 0,
-        damagedQuantity: item.damagedQuantity || 0,
-        missingQuantity: item.missingQuantity || 0,
-        rejectedQuantity: item.rejectedQuantity || 0,
-        remarks: item.remarks || "",
+        sourceBatches: item.sourceBatches || [],
       })),
 
       summary: {
-        totalItems: transfer.items.length,
-        totalQuantity,
-        totalPacked,
-        totalReceived,
+        ...transfer.summary,
         totalDamaged,
         totalMissing,
-        packedPercentage,
-        receivedPercentage,
       },
 
-      reason: transfer.reason,
-      reasonText: transfer.reasonText,
       notes: transfer.notes,
       status: transfer.status,
 
       createdAt: transfer.createdAt,
       updatedAt: transfer.updatedAt,
-      acceptedAt: transfer.acceptedAt,
       packedAt: transfer.packedAt,
       dispatchedAt: transfer.dispatchedAt,
       receivedAt: transfer.receivedAt,
@@ -138,11 +109,6 @@ export const getTransferByIdController = async (req, res) => {
         ? { _id: transfer.createdBy._id, name: transfer.createdBy.name, email: transfer.createdBy.email }
         : { name: transfer.createdByName },
       createdByName: transfer.createdByName,
-
-      acceptedBy: transfer.acceptedBy
-        ? { _id: transfer.acceptedBy._id, name: transfer.acceptedBy.name, email: transfer.acceptedBy.email }
-        : null,
-      acceptedByName: transfer.acceptedByName,
 
       packedBy: transfer.packedBy
         ? { _id: transfer.packedBy._id, name: transfer.packedBy.name, email: transfer.packedBy.email }
@@ -166,19 +132,10 @@ export const getTransferByIdController = async (req, res) => {
       cancellationReason: transfer.cancellationReason,
 
       progress: {
-        totalItems: transfer.items.length,
-        totalQuantity,
-        totalPacked,
-        totalReceived,
-        totalDamaged,
-        totalMissing,
-        packedPercentage,
-        receivedPercentage,
-        isRequested: transfer.status === "REQUESTED",
-        isAccepted: transfer.status === "ACCEPTED",
+        isProcessing: transfer.status === "PROCESSING",
         isPacked: transfer.status === "PACKED",
         isDispatched: transfer.status === "DISPATCHED",
-        isCompleted: transfer.status === "COMPLETED" || transfer.status === "RECEIVED",
+        isReceived: transfer.status === "RECEIVED",
         isCancelled: transfer.status === "CANCELLED",
       },
 

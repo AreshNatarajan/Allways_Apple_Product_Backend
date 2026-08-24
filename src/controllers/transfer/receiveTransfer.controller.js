@@ -1,31 +1,25 @@
 // controllers/transfer/receiveTransfer.controller.js
 import mongoose from "mongoose";
 import Transfer from "../../models/Transfer.modal.js";
+import TransferHistory from "../../models/TransferHistory.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
-import Batch from "../../models/Batch.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
-import Inventory from "../../models/Inventory.modal.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 const VALID_CONDITIONS = ["GOOD", "DAMAGED", "MISSING"];
 
-const isFullyReceived = (item) => {
-  if (item.isSerialized) {
-    return item.serials.every((s) => s.condition !== null);
-  }
-  return item.packedBatches.every((b) => b.receivedQuantity + b.damagedQuantity + b.missingQuantity >= b.quantity);
-};
-
 // ============================================================
-// Phase 3 - RECEIVE (Destination Branch only)
-// The destination can never edit the request itself - this only ever
-// processes what was actually packed and dispatched (item.serials[] /
-// item.packedBatches[]), never the original Phase 1 quantity. Only
-// GOOD quantity ever increases sellable inventory - Damaged and
-// Missing are recorded but never touch BatchStock.availableQuantity/
-// Inventory.quantity, matching the exact convention already
-// established by the Pending Receive module.
+// RECEIVE - Destination Branch only, single-shot (no scanning, no
+// incremental partial receives - the whole transfer is confirmed in
+// one call). Every serial/batch was already fixed (and reserved) at
+// creation, so this only ever reviews and records condition, never
+// re-selects items. Only GOOD ever credits sellable inventory -
+// DAMAGED/MISSING are recorded but never touch
+// BatchStock.availableQuantity, matching the exact convention already
+// established by the Pending Receive module. `transfer.status !==
+// DISPATCHED` (i.e. already RECEIVED, or not dispatched yet) is itself
+// the duplicate-receive guard.
 // ============================================================
 export const receiveTransferController = async (req, res) => {
   const session = await mongoose.startSession();
@@ -39,11 +33,10 @@ export const receiveTransferController = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { items, notes } = req.body;
+    const { serialResults = [], batchResults = [], notes } = req.body;
     const user = req.user;
 
     if (!mongoose.Types.ObjectId.isValid(id)) return rollback("Invalid transfer id", 400);
-    if (!Array.isArray(items) || items.length === 0) return rollback("No items provided to receive", 400);
 
     const transfer = await Transfer.findById(id).session(session);
     if (!transfer) return rollback("Transfer not found", 404);
@@ -56,98 +49,75 @@ export const receiveTransferController = async (req, res) => {
     }
 
     if (transfer.status !== "DISPATCHED") {
-      return rollback(`Cannot receive a transfer with status "${transfer.status}". Only DISPATCHED transfers can be received.`, 400);
+      return rollback(
+        transfer.status === "RECEIVED"
+          ? "This transfer has already been received."
+          : `Cannot receive a transfer with status "${transfer.status}". Only DISPATCHED transfers can be received.`,
+        400
+      );
     }
 
+    const serialResultByPsId = new Map(serialResults.map((r) => [String(r.productSerialId), r]));
+    const batchResultByBsId = new Map(batchResults.map((r) => [String(r.batchStockId), r]));
+
     const errors = [];
-    const serialReceiveLog = [];
-    const batchReceiveLog = [];
+    const serialLog = [];
+    const batchLog = [];
 
-    for (const rawItem of items) {
-      if (rawItem.isSerialized) {
-        const serialNumber = (rawItem.serialNumber || "").trim().toUpperCase();
-        const condition = (rawItem.condition || "").toUpperCase();
-        const remarks = rawItem.remarks || "";
+    for (const item of transfer.items) {
+      if (item.isSerialized) {
+        for (const s of item.serials) {
+          const result = serialResultByPsId.get(String(s.productSerialId));
+          const condition = (result?.condition || "GOOD").toUpperCase();
+          const remarks = result?.remarks || "";
 
-        if (!serialNumber) {
-          errors.push("Serial number is required");
-          continue;
-        }
-        if (!VALID_CONDITIONS.includes(condition)) {
-          errors.push(`Serial "${serialNumber}": condition must be GOOD, DAMAGED, or MISSING`);
-          continue;
-        }
-        if (condition !== "GOOD" && !remarks.trim()) {
-          errors.push(`Serial "${serialNumber}": remarks are required when marking ${condition}`);
-          continue;
-        }
+          if (!VALID_CONDITIONS.includes(condition)) {
+            errors.push(`Serial "${s.serialNumber}": condition must be GOOD, DAMAGED, or MISSING`);
+            continue;
+          }
+          if (condition !== "GOOD" && !remarks.trim()) {
+            errors.push(`Serial "${s.serialNumber}": remarks are required when marking ${condition}`);
+            continue;
+          }
 
-        const item = transfer.items.find((i) => i.isSerialized && i.serials.some((s) => s.serialNumber === serialNumber));
-        const packedEntry = item?.serials.find((s) => s.serialNumber === serialNumber);
+          const serialRecord = await ProductSerial.findById(s.productSerialId).session(session);
+          if (!serialRecord) {
+            errors.push(`Serial "${s.serialNumber}" record could not be found`);
+            continue;
+          }
+          if (serialRecord.status !== "IN_TRANSIT" || serialRecord.assignedBranchId?.toString() !== transfer.destinationBranchId.toString()) {
+            errors.push(`Serial "${s.serialNumber}" is not in transit to this branch (current status: ${serialRecord.status})`);
+            continue;
+          }
 
-        if (!item || !packedEntry) {
-          errors.push(`Serial "${serialNumber}" was not part of this transfer's dispatch`);
-          continue;
+          serialLog.push({ item, itemSerial: s, serialRecord, condition, remarks });
         }
-        if (packedEntry.condition !== null) {
-          errors.push(`Serial "${serialNumber}" has already been received`);
-          continue;
-        }
-
-        const serialRecord = await ProductSerial.findById(packedEntry.productSerialId).session(session);
-        if (!serialRecord) {
-          errors.push(`Serial "${serialNumber}" record could not be found`);
-          continue;
-        }
-        if (serialRecord.status !== "IN_TRANSIT") {
-          errors.push(`Serial "${serialNumber}" is not in transit (current status: ${serialRecord.status})`);
-          continue;
-        }
-        if (!serialRecord.assignedBranchId || serialRecord.assignedBranchId.toString() !== transfer.destinationBranchId.toString()) {
-          errors.push(`Serial "${serialNumber}" is not assigned to this destination branch`);
-          continue;
-        }
-
-        serialReceiveLog.push({ item, packedEntry, serialRecord, condition, remarks });
       } else {
-        const batchNumber = (rawItem.batchNumber || "").trim().toUpperCase();
-        const goodQty = Number(rawItem.goodQuantity) || 0;
-        const damagedQty = Number(rawItem.damagedQuantity) || 0;
-        const missingQty = Number(rawItem.missingQuantity) || 0;
-        const remarks = rawItem.remarks || "";
-        const total = goodQty + damagedQty + missingQty;
+        for (const b of item.sourceBatches) {
+          const result = batchResultByBsId.get(String(b.batchStockId));
+          const goodQty = result ? Number(result.goodQuantity) || 0 : b.quantity;
+          const damagedQty = result ? Number(result.damagedQuantity) || 0 : 0;
+          const missingQty = result ? Number(result.missingQuantity) || 0 : 0;
+          const remarks = result?.remarks || "";
+          const total = goodQty + damagedQty + missingQty;
 
-        if (!batchNumber) {
-          errors.push("Batch number is required");
-          continue;
-        }
-        if (total <= 0) {
-          errors.push(`Batch "${batchNumber}": arrived quantity must be greater than 0`);
-          continue;
-        }
-        if ((damagedQty > 0 || missingQty > 0) && !remarks.trim()) {
-          errors.push(`Batch "${batchNumber}": remarks are required when reporting damaged/missing units`);
-          continue;
-        }
+          if (total !== b.quantity) {
+            errors.push(`Batch "${b.batchNumber}": good+damaged+missing must total exactly ${b.quantity} (got ${total})`);
+            continue;
+          }
+          if ((damagedQty > 0 || missingQty > 0) && !remarks.trim()) {
+            errors.push(`Batch "${b.batchNumber}": remarks are required when reporting damaged/missing units`);
+            continue;
+          }
 
-        const item = transfer.items.find(
-          (i) => !i.isSerialized && i.packedBatches.some((b) => b.batchNumber === batchNumber)
-        );
-        const packedBatch = item?.packedBatches.find((b) => b.batchNumber === batchNumber);
+          const sourceBatchStock = await BatchStock.findById(b.batchStockId).session(session);
+          if (!sourceBatchStock) {
+            errors.push(`Batch "${b.batchNumber}" record could not be found`);
+            continue;
+          }
 
-        if (!item || !packedBatch) {
-          errors.push(`Batch "${batchNumber}" was not part of this transfer's dispatch`);
-          continue;
+          batchLog.push({ item, sourceBatch: b, sourceBatchStock, goodQty, damagedQty, missingQty, remarks });
         }
-
-        const alreadyProcessed = packedBatch.receivedQuantity + packedBatch.damagedQuantity + packedBatch.missingQuantity;
-        const remaining = packedBatch.quantity - alreadyProcessed;
-        if (total > remaining) {
-          errors.push(`Batch "${batchNumber}": cannot process ${total} units, only ${remaining} remaining of the packed quantity`);
-          continue;
-        }
-
-        batchReceiveLog.push({ item, packedBatch, goodQty, damagedQty, missingQty, remarks });
       }
     }
 
@@ -160,7 +130,7 @@ export const receiveTransferController = async (req, res) => {
     // ============================================================
     // APPLY - serialized
     // ============================================================
-    for (const { item, packedEntry, serialRecord, condition, remarks } of serialReceiveLog) {
+    for (const { itemSerial, serialRecord, condition, remarks } of serialLog) {
       if (condition === "GOOD") {
         serialRecord.status = "AVAILABLE";
         serialRecord.currentBranchId = transfer.destinationBranchId;
@@ -168,7 +138,7 @@ export const receiveTransferController = async (req, res) => {
         serialRecord.receivedAt = now;
       } else {
         serialRecord.status = condition; // DAMAGED | MISSING
-        serialRecord.currentBranchId = transfer.destinationBranchId;
+        serialRecord.currentBranchId = condition === "DAMAGED" ? transfer.destinationBranchId : null;
         serialRecord.assignedBranchId = null;
         serialRecord.remarks = remarks;
         serialRecord.conditionUpdatedBy = user._id;
@@ -176,18 +146,10 @@ export const receiveTransferController = async (req, res) => {
       }
       await serialRecord.save({ session });
 
-      packedEntry.condition = condition;
-      packedEntry.remarks = remarks;
-      packedEntry.isReceived = condition === "GOOD";
-      packedEntry.isRejected = condition !== "GOOD";
+      itemSerial.condition = condition;
+      itemSerial.remarks = remarks;
 
-      if (condition === "GOOD") {
-        item.receivedQuantity = (item.receivedQuantity || 0) + 1;
-        await Inventory.findOneAndUpdate(
-          { branchId: transfer.destinationBranchId, productId: serialRecord.productId },
-          { $inc: { quantity: 1 } },
-          { upsert: true, session }
-        );
+      if (condition !== "MISSING") {
         await recordStockMovement({
           type: "TRANSFER_IN",
           productId: serialRecord.productId,
@@ -203,108 +165,113 @@ export const receiveTransferController = async (req, res) => {
           referenceId: transfer._id,
           performedBy: user._id,
           performedByName: user.name || "",
-          notes: `Serial ${packedEntry.serialNumber} received at ${transfer.destinationBranchName} (transfer ${transfer.transferNumber})`,
+          notes: `Serial ${serialRecord.serialNumber} received at ${transfer.destinationBranchName} as ${condition} (transfer ${transfer.transferNumber})`,
           session,
         });
-      } else if (condition === "DAMAGED") {
-        item.damagedQuantity = (item.damagedQuantity || 0) + 1;
-      } else {
-        item.missingQuantity = (item.missingQuantity || 0) + 1;
       }
     }
 
     // ============================================================
-    // APPLY - non-serialized
+    // APPLY - non-serialized: find-or-create destination BatchStock,
+    // seeded from the SOURCE batch's own recorded price/GST (the exact
+    // batch this quantity actually came from), never a generic lookup.
     // ============================================================
-    for (const { item, packedBatch, goodQty, damagedQty, missingQty, remarks } of batchReceiveLog) {
-      packedBatch.receivedQuantity += goodQty;
-      packedBatch.damagedQuantity += damagedQty;
-      packedBatch.missingQuantity += missingQty;
-
-      item.receivedQuantity = (item.receivedQuantity || 0) + goodQty;
-      item.damagedQuantity = (item.damagedQuantity || 0) + damagedQty;
-      item.missingQuantity = (item.missingQuantity || 0) + missingQty;
-      if (remarks) item.remarks = remarks;
+    for (const { item, sourceBatch, sourceBatchStock, goodQty, damagedQty, missingQty, remarks } of batchLog) {
+      sourceBatch.receivedGoodQuantity = goodQty;
+      sourceBatch.receivedDamagedQuantity = damagedQty;
+      sourceBatch.receivedMissingQuantity = missingQty;
+      sourceBatch.remarks = remarks;
 
       if (goodQty + damagedQty > 0) {
-        const batch = await Batch.findById(packedBatch.batchId).session(session);
-        if (batch) {
-          let destBatchStock = await BatchStock.findOne({
-            batchId: batch._id,
+        let destBatchStock = await BatchStock.findOne({
+          batchId: sourceBatchStock.batchId,
+          branchId: transfer.destinationBranchId,
+        }).session(session);
+
+        if (destBatchStock) {
+          destBatchStock.quantity += goodQty + damagedQty;
+          destBatchStock.availableQuantity += goodQty;
+          destBatchStock.damagedQuantity += damagedQty;
+          await destBatchStock.save({ session });
+        } else {
+          destBatchStock = new BatchStock({
+            batchId: sourceBatchStock.batchId,
+            productId: item.productId,
             branchId: transfer.destinationBranchId,
-          }).session(session);
+            batchNumber: sourceBatchStock.batchNumber,
+            barcode: sourceBatchStock.barcode || sourceBatchStock.batchNumber,
+            productCode: item.productCode || sourceBatchStock.productCode,
+            purchaseId: sourceBatchStock.purchaseId,
+            quantity: goodQty + damagedQty,
+            availableQuantity: goodQty,
+            damagedQuantity: damagedQty,
+            soldQuantity: 0,
+            purchasePrice: sourceBatchStock.purchasePrice,
+            sellingPrice: sourceBatchStock.sellingPrice,
+            gstApplicable: sourceBatchStock.gstApplicable,
+            purchaseGstPercent: sourceBatchStock.purchaseGstPercent,
+            status: "ACTIVE",
+          });
+          await destBatchStock.save({ session });
+        }
 
-          if (destBatchStock) {
-            destBatchStock.quantity += goodQty + damagedQty;
-            destBatchStock.availableQuantity += goodQty;
-            destBatchStock.damagedQuantity += damagedQty;
-            await destBatchStock.save({ session });
-          } else {
-            destBatchStock = new BatchStock({
-              batchId: batch._id,
-              productId: item.productId,
-              branchId: transfer.destinationBranchId,
-              batchNumber: batch.batchNumber,
-              barcode: batch.batchNumber,
-              productCode: item.productCode || "",
-              purchaseId: batch.purchaseId,
-              quantity: goodQty + damagedQty,
-              availableQuantity: goodQty,
-              damagedQuantity: damagedQty,
-              soldQuantity: 0,
-              purchasePrice: batch.purchasePrice,
-              sellingPrice: batch.sellingPrice,
-              gstApplicable: batch.gstApplicable,
-              purchaseGstPercent: batch.purchaseGstPercent,
-              status: "ACTIVE",
-            });
-            await destBatchStock.save({ session });
-          }
-
-          if (goodQty > 0) {
-            await Inventory.findOneAndUpdate(
-              { branchId: transfer.destinationBranchId, productId: item.productId },
-              { $inc: { quantity: goodQty } },
-              { upsert: true, session }
-            );
-
-            await recordStockMovement({
-              type: "TRANSFER_IN",
-              productId: item.productId,
-              branchId: transfer.destinationBranchId,
-              batchId: batch._id,
-              quantityDelta: goodQty,
-              resultingAvailableQuantity: destBatchStock.availableQuantity,
-              unitCost: batch.purchasePrice,
-              gstApplicable: batch.gstApplicable,
-              gstPercent: batch.purchaseGstPercent,
-              branchFrom: transfer.sourceBranchId,
-              branchTo: transfer.destinationBranchId,
-              referenceType: "Transfer",
-              referenceId: transfer._id,
-              performedBy: user._id,
-              performedByName: user.name || "",
-              notes: `${goodQty} unit(s) of batch ${batch.batchNumber} received at ${transfer.destinationBranchName} (transfer ${transfer.transferNumber})`,
-              session,
-            });
-          }
+        // Only the GOOD portion gets its own StockMovement row - the
+        // dedupe index on (referenceType, referenceId, batchId, type)
+        // allows only ONE TRANSFER_IN row per batch per transfer, so a
+        // damaged portion can't get a second row of the same type under
+        // the same reference. Damaged/missing quantities are still
+        // fully recorded on the Transfer document itself
+        // (sourceBatch.receivedDamagedQuantity/receivedMissingQuantity)
+        // and on the destination BatchStock's own damagedQuantity field -
+        // nothing is lost, it just isn't duplicated into the ledger.
+        if (goodQty > 0) {
+          await recordStockMovement({
+            type: "TRANSFER_IN",
+            productId: item.productId,
+            branchId: transfer.destinationBranchId,
+            batchId: sourceBatchStock.batchId,
+            quantityDelta: goodQty,
+            resultingAvailableQuantity: destBatchStock.availableQuantity,
+            unitCost: sourceBatchStock.purchasePrice,
+            gstApplicable: sourceBatchStock.gstApplicable,
+            gstPercent: sourceBatchStock.purchaseGstPercent,
+            branchFrom: transfer.sourceBranchId,
+            branchTo: transfer.destinationBranchId,
+            referenceType: "Transfer",
+            referenceId: transfer._id,
+            performedBy: user._id,
+            performedByName: user.name || "",
+            notes: damagedQty > 0
+              ? `${goodQty} unit(s) of batch ${sourceBatch.batchNumber} received GOOD (+${damagedQty} damaged) at ${transfer.destinationBranchName} (transfer ${transfer.transferNumber})`
+              : `${goodQty} unit(s) of batch ${sourceBatch.batchNumber} received at ${transfer.destinationBranchName} (transfer ${transfer.transferNumber})`,
+            session,
+          });
         }
       }
+      // missingQty: never arrived, no destination-side movement at all.
     }
 
-    // ============================================================
-    // NO AUTO STATUS TRANSITION. Reaching full accounting (every
-    // dispatched serial/batch unit marked GOOD/DAMAGED/MISSING) does
-    // NOT flip the transfer to COMPLETED by itself - the user must
-    // explicitly review and confirm via the COMPLETE_RECEIVING action
-    // (updateTransferStatus.ontroller.js). `readyToComplete` tells the
-    // frontend when that button can be enabled. No TransferHistory row
-    // here either - see the equivalent note in packTransfer.controller.js;
-    // every individual scan's audit trail already lives in StockMovement.
-    // ============================================================
-    const readyToComplete = transfer.items.every(isFullyReceived);
-
+    transfer.status = "RECEIVED";
+    transfer.receivedBy = user._id;
+    transfer.receivedByName = user.name;
+    transfer.receivedAt = now;
     await transfer.save({ session });
+
+    await TransferHistory.create(
+      [
+        {
+          transferId: transfer._id,
+          transferNumber: transfer.transferNumber,
+          action: "RECEIVED",
+          fromStatus: "DISPATCHED",
+          toStatus: "RECEIVED",
+          notes: notes || `Transfer received by ${user.name} at ${transfer.destinationBranchName}`,
+          performedBy: user._id,
+          performedByName: user.name,
+        },
+      ],
+      { session }
+    );
 
     await session.commitTransaction();
     session.endSession();
@@ -313,20 +280,13 @@ export const receiveTransferController = async (req, res) => {
       .populate("sourceBranchId", "name code")
       .populate("destinationBranchId", "name code");
 
-    return successResponse(res, readyToComplete ? "All items accounted for - ready to complete receiving" : "Items received successfully", {
-      transfer: populatedTransfer,
-      summary: {
-        totalSerialsReceived: serialReceiveLog.length,
-        totalBatchesProcessed: batchReceiveLog.length,
-        readyToComplete,
-      },
-    });
+    return successResponse(res, "Transfer received successfully", { transfer: populatedTransfer });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Receive Transfer Error:", error);
     if (error.code === 11000) {
-      return errorResponse(res, "This item has already been recorded for this transfer. Please refresh and try again.", 409);
+      return errorResponse(res, "This transfer has already been received. Please refresh.", 409);
     }
     return errorResponse(res, error.message || "Failed to receive transfer", 500);
   }

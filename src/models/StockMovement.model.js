@@ -270,17 +270,21 @@ stockMovementSchema.index({ type: 1, performedAt: -1 });
 // DIFFERENT events (e.g. sold from repeatedly across separate sales),
 // which is normal and expected.
 //
-// Transfer is excluded: packing/receiving a Transfer is explicitly
-// allowed to happen across multiple partial scans of the same batch
-// (e.g. scan a batch, add 2, scan it again later, add 3) - each
-// partial action is its own legitimate movement row against the same
-// transfer+batch, not a duplicate of one event.
+// Transfer is now included too: the old request/scan-based Transfer
+// flow allowed multiple partial scans of the same batch under one
+// transfer (scan it once, add 2; scan it again later, add 3), which
+// legitimately produced more than one movement row for the same
+// transfer+batch+type. The current Transfer flow selects every item
+// once, atomically, at creation - there is no longer a legitimate
+// reason for the same batch/serial to get the same movement `type`
+// twice under one Transfer, so the same duplicate-submission guard
+// used everywhere else now applies here too.
 //
 // MongoDB partial index filters only support $eq/$exists/$gt/$gte/
-// $lt/$lte/$type/$and - there is no $ne/$or, so "every referenceType
-// except Transfer" is expressed as one $eq-scoped index per allowed
-// type rather than a single negated one.
-const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale"];
+// $lt/$lte/$type/$and - there is no $ne/$or, so "every referenceType"
+// is expressed as one $eq-scoped index per type rather than a single
+// negated one.
+const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale", "Transfer"];
 DEDUPED_REFERENCE_TYPES.forEach((referenceType) => {
   stockMovementSchema.index(
     { referenceType: 1, referenceId: 1, batchId: 1, serialId: 1, type: 1 },
