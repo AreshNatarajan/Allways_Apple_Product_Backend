@@ -25,30 +25,36 @@ export const loginController = async (
     try {
 
         const {
-            email,
+            phone,
             password,
         } = req.body;
 
         if (
-            !email ||
+            !phone ||
             !password
         ) {
             return errorResponse(
                 res,
-                'Email and password are required',
+                'Phone number and password are required',
                 400
             );
         }
 
+        // Same trim-based normalization user-creation already applies to
+        // phone (see creatStaff.controller.js et al.) - no other format
+        // variance exists in real data (verified: every stored phone is a
+        // plain 10-digit string, no +91/spaces/dashes), so trim is enough.
+        const normalizedPhone = phone.trim();
+
         const user =
             await User.findOne({
-                email,
+                phone: normalizedPhone,
             });
 
         if (!user) {
             return errorResponse(
                 res,
-                'Invalid email or password',
+                'Invalid phone number or password',
                 401
             );
         }
@@ -56,7 +62,7 @@ export const loginController = async (
         if (user.isDeleted) {
             return errorResponse(
                 res,
-                'Invalid email or password',
+                'Invalid phone number or password',
                 401
             );
         }
@@ -79,7 +85,7 @@ export const loginController = async (
         if (!isPasswordValid) {
             return errorResponse(
                 res,
-                'Invalid email or password',
+                'Invalid phone number or password',
                 401
             );
         }
