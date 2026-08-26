@@ -82,7 +82,12 @@ const vendorSchema = new mongoose.Schema(
 
     createdByRole: {
       type: String,
-      enum: ["SUPER_ADMIN", "BRANCH_ADMIN"],
+      // Pre-existing gap fixed in passing: Vendor creation has been
+      // open to any authenticated role (incl. STAFF) at the route
+      // level all along (see routes/vendor/vendor.router.js's own
+      // comment), but this enum never actually allowed STAFF to be
+      // saved - a STAFF-created vendor would 500 on this validation.
+      enum: ["SUPER_ADMIN", "BRANCH_ADMIN", "STAFF"],
       required: true,
     },
 
@@ -94,7 +99,7 @@ const vendorSchema = new mongoose.Schema(
 
     updatedByRole: {
       type: String,
-      enum: ["SUPER_ADMIN", "BRANCH_ADMIN"],
+      enum: ["SUPER_ADMIN", "BRANCH_ADMIN", "STAFF"],
       default: null,
     },
   },

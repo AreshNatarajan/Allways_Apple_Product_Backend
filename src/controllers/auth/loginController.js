@@ -128,6 +128,8 @@ export const loginController = async (
                         user.branchId,
                     isActive:
                         user.isActive,
+                    permissions:
+                        user.permissions,
                 },
                 token,
             },

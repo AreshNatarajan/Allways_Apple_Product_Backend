@@ -49,10 +49,17 @@ export const createTransferController = async (req, res) => {
     // ============================================================
     // ROLE RULES - SUPER_ADMIN has no branch of their own, so they pick
     // both sides. Every other role's source branch is always their own
-    // branch - never trusted from the request body.
+    // branch - never trusted from the request body. Additionally,
+    // BRANCH_ADMIN/STAFF need the transfer.create per-user grant
+    // (defaults to true for both today, can be individually revoked -
+    // see config/permissionCatalog.js). SUPER_ADMIN's fixed access is
+    // unaffected by this permission field.
     // ============================================================
     if (!isSuperAdmin) {
       if (!user.branchId) return rollback("Branch not assigned to user", 400);
+      if (user.permissions?.["transfer.create"] !== true) {
+        return rollback("You don't have permission to perform this action", 403);
+      }
       sourceBranchId = user.branchId.toString();
     }
 

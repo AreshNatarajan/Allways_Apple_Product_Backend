@@ -207,7 +207,11 @@ const productSchema = new mongoose.Schema(
 
     createdByRole: {
       type: String,
-      enum: ["SUPER_ADMIN", "BRANCH_ADMIN"],
+      // STAFF included since the per-user permission system
+      // (config/permissionCatalog.js) can grant product.create to a
+      // STAFF user, exceeding what onlyAdminRoles allowed before it -
+      // see routes/product/product.router.js.
+      enum: ["SUPER_ADMIN", "BRANCH_ADMIN", "STAFF"],
       required: true,
     },
 
@@ -219,7 +223,7 @@ const productSchema = new mongoose.Schema(
 
     updatedByRole: {
       type: String,
-      enum: ["SUPER_ADMIN", "BRANCH_ADMIN"],
+      enum: ["SUPER_ADMIN", "BRANCH_ADMIN", "STAFF"],
       default: null,
     },
   },

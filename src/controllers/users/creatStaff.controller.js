@@ -4,6 +4,7 @@ import User from "../../models/User.js";
 import bcrypt from "bcryptjs";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import { resolveActiveBranch } from "../../services/branchValidation.service.js";
+import { defaultPermissionsForRole } from "../../config/permissionCatalog.js";
 
 export const createStaffController = async (req, res) => {
     try {

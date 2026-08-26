@@ -3,6 +3,7 @@ import express from "express";
 const router = express.Router();
 
 import authMiddleware from "../../middleware/authMiddleware.js";
+import requirePermission from "../../middleware/requirePermission.js";
 
 import { createCustomerController } from "../../controllers/customer/createCustomer.controller.js";
 import { getAllCustomersController } from "../../controllers/customer/getAllCustomer.controller.js";
@@ -15,12 +16,15 @@ import { getCustomerStatsController } from "../../controllers/customer/getCustom
 import { getCustomerForTablePagination } from "../../controllers/customer/getCustomerForTablePagination.controller.js";
 
 // Customer is BRANCH-SCOPED (unlike Vendor, which is a global master).
-// Reads/writes are open to any authenticated role (SUPER_ADMIN/
-// BRANCH_ADMIN/STAFF) - matches the pre-existing convention for this
-// module (no role-gate middleware was ever wired up here) and the
-// realistic need for STAFF to add/edit walk-in customers during a
-// sale. Branch isolation itself is enforced inside each controller via
-// getCustomerBranchFilter, not by blocking roles at the route level.
+// Reads are open to any authenticated role. Writes are gated by the
+// per-user permission system (requirePermission - see
+// config/permissionCatalog.js) rather than a fixed role check -
+// SUPER_ADMIN always passes, BRANCH_ADMIN/STAFF need the matching
+// customer.* grant, which defaults to true for both today (realistic
+// need for STAFF to add/edit walk-in customers during a sale) but can
+// be individually revoked per user. Branch isolation itself is
+// enforced inside each controller via getCustomerBranchFilter,
+// independent of this permission check.
 
 // =========================
 // STATIC ROUTES FIRST
@@ -60,24 +64,28 @@ router.get(
 router.post(
   "/create",
   authMiddleware,
+  requirePermission("customer.create"),
   createCustomerController
 );
 
 router.put(
   "/update/:customerId",
   authMiddleware,
+  requirePermission("customer.edit"),
   updateCustomerController
 );
 
 router.delete(
   "/delete/:customerId",
   authMiddleware,
+  requirePermission("customer.status"),
   deleteCustomerController
 );
 
 router.patch(
   "/:customerId/reactivate",
   authMiddleware,
+  requirePermission("customer.status"),
   reactivateCustomerController
 );
 

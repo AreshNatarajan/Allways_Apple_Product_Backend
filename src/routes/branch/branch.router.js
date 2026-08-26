@@ -40,6 +40,12 @@ router.get(
 );
 router.get("/stats", authMiddleware, onlySuperAdmin, getBranchStatsController);
 
+// Branch management (including View) is permanently Super Admin-only
+// end to end, never delegated by the per-user permission system - see
+// config/permissionCatalog.js's SUPER_ADMIN_ONLY_KEYS. Not gated here
+// at all: the controller's own inline check (SUPER_ADMIN any branch,
+// everyone else only their own) already covers every branch user's
+// legitimate need to view their own branch's detail page.
 router.get("/:id", authMiddleware, getBranchByIdController);
 
 

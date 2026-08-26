@@ -86,6 +86,15 @@ export const bulkReceiveController = async (req, res) => {
         if (!userBranchId) {
             return rollback("Branch not assigned to user", 400);
         }
+        // pendingReceive.receive per-user grant (defaults to true for
+        // BRANCH_ADMIN/STAFF today, can be revoked) - see
+        // config/permissionCatalog.js. No SUPER_ADMIN bypass needed here:
+        // SUPER_ADMIN never reaches this far, they have no branchId and
+        // already fail the check above (unrelated, pre-existing rule -
+        // only the destination branch can receive stock).
+        if (user.permissions?.["pendingReceive.receive"] !== true) {
+            return rollback("You don't have permission to perform this action", 403);
+        }
         if (!purchaseId || !mongoose.Types.ObjectId.isValid(purchaseId)) {
             return rollback("Valid purchaseId is required", 400);
         }

@@ -4,6 +4,7 @@ const router = express.Router();
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
+import requirePermission from '../../middleware/requirePermission.js';
 
 // 1. Import the controller function
 import { createSaleController } from '../../controllers/sale/createSale.controller.js';
@@ -58,11 +59,16 @@ router.get('/:id', authMiddleware, getSaleByIdController);
 
 // 2. Change the route handler to use the imported controller
 
-router.post('/create', authMiddleware, onlyBranchRoles, createSaleController);
+// onlyBranchRoles already hard-blocks SUPER_ADMIN here (untouched,
+// permanent) - requirePermission only ever evaluates for BRANCH_ADMIN/
+// STAFF, who need the matching sale.create grant (defaults to true for
+// both today, can be individually revoked).
+router.post('/create', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), createSaleController);
 
-// Sale Edit - no role gate (all three roles can edit, mirrors Purchase's
-// identical PUT /:id); updateSaleController resets EOD review for a
-// non-SUPER_ADMIN editor and clears it for a SUPER_ADMIN editor itself.
-router.put('/:id', authMiddleware, updateSaleController);
+// Sale Edit - SUPER_ADMIN always passes; BRANCH_ADMIN/STAFF need
+// sale.edit. updateSaleController still resets EOD review for a
+// non-SUPER_ADMIN editor and clears it for a SUPER_ADMIN editor itself,
+// unaffected by this gate.
+router.put('/:id', authMiddleware, requirePermission('sale.edit'), updateSaleController);
 
 export default router;

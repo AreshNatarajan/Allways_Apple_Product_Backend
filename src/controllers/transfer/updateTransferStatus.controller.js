@@ -50,6 +50,11 @@ export const updateTransferStatusController = async (req, res) => {
       if (!isSuperAdmin && !isSourceBranchUser) {
         return rollback("Only the source branch can mark this transfer as packed", 403);
       }
+      // Pack/Dispatch share one catalog permission (transfer.dispatch) -
+      // defaults to true for BRANCH_ADMIN/STAFF today, can be revoked.
+      if (!isSuperAdmin && user.permissions?.["transfer.dispatch"] !== true) {
+        return rollback("You don't have permission to perform this action", 403);
+      }
       if (transfer.status !== "PROCESSING") {
         return rollback(`Only PROCESSING transfers can be marked packed. Current: ${transfer.status}`, 400);
       }
@@ -70,6 +75,9 @@ export const updateTransferStatusController = async (req, res) => {
     else if (action === "DISPATCH") {
       if (!isSuperAdmin && !isSourceBranchUser) {
         return rollback("Only the source branch can dispatch this transfer", 403);
+      }
+      if (!isSuperAdmin && user.permissions?.["transfer.dispatch"] !== true) {
+        return rollback("You don't have permission to perform this action", 403);
       }
       if (transfer.status !== "PACKED") {
         return rollback(`Only PACKED transfers can be dispatched. Current: ${transfer.status}`, 400);
@@ -111,6 +119,9 @@ export const updateTransferStatusController = async (req, res) => {
       }
       if (!isSuperAdmin && !isSourceBranchUser) {
         return rollback("Only the source branch can cancel this transfer", 403);
+      }
+      if (!isSuperAdmin && user.permissions?.["transfer.cancel"] !== true) {
+        return rollback("You don't have permission to perform this action", 403);
       }
 
       for (const item of transfer.items) {

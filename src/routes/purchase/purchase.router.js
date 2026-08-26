@@ -3,6 +3,7 @@ const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
+import requirePermission from '../../middleware/requirePermission.js';
 
 // 1. Change the requires to modern imports
 
@@ -61,14 +62,16 @@ router.get('/stats', authMiddleware, statsPurchaseController);
 // sale.router.js's /:id/review placement).
 router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewPurchaseController);
 router.get('/:id', authMiddleware, getPurchaseByIdController);
-// Any authenticated role (incl. STAFF) can create a purchase - matches
-// createPurchase.controller.js's isBranchFlow handling, which now treats
-// STAFF the same as BRANCH_ADMIN (direct purchase into their own branch).
-router.post('/create', authMiddleware, createPurchaseController);
-// Same permission level as create - any authenticated role can edit a
-// purchase; updatePurchaseController resets EOD review for a
-// non-SUPER_ADMIN editor rather than restricting who can edit at all.
-router.put('/:id', authMiddleware, updatePurchaseController);
+// SUPER_ADMIN always passes (fixed access); BRANCH_ADMIN/STAFF need the
+// matching per-user grant (requirePermission - see config/permissionCatalog.js),
+// which defaults to true for both today - matches createPurchase.controller.js's
+// isBranchFlow handling, which treats STAFF the same as BRANCH_ADMIN
+// (direct purchase into their own branch) - but can be individually revoked.
+router.post('/create', authMiddleware, requirePermission('purchase.create'), createPurchaseController);
+// Same pattern as create - updatePurchaseController still resets EOD
+// review for a non-SUPER_ADMIN editor regardless, this only gates
+// whether they can reach the edit at all.
+router.put('/:id', authMiddleware, requirePermission('purchase.edit'), updatePurchaseController);
 router.get('/', authMiddleware, getAllPurchasesController);
 
 

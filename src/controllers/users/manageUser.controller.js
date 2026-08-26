@@ -3,6 +3,7 @@ import User from "../../models/User.js";
 import bcrypt from "bcryptjs";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import { resolveActiveBranch } from "../../services/branchValidation.service.js";
+import { sanitizePermissions } from "../../config/permissionCatalog.js";
 
 const VALID_ROLES = ["SUPER_ADMIN", "BRANCH_ADMIN", "STAFF"];
 
@@ -27,6 +28,7 @@ export const manageUserController = async (req, res) => {
             isActive,
             branchId,
             role,
+            permissions,
         } = req.body;
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -152,6 +154,19 @@ export const manageUserController = async (req, res) => {
 
         if (isActive !== undefined) {
             updateData.isActive = isActive;
+        }
+
+        // ============================================================
+        // PERMISSIONS (Manage Access screen) - never applies to a
+        // SUPER_ADMIN target, whose access is fixed in code, not
+        // configurable through this field. Every key is validated
+        // against the real catalog and any superAdminOnly key (EOD
+        // review) is silently forced back to false, regardless of what
+        // was sent - defense-in-depth backstop matching the frontend's
+        // already-disabled checkboxes for those two operations.
+        // ============================================================
+        if (permissions !== undefined && effectiveRole !== "SUPER_ADMIN") {
+            updateData.permissions = sanitizePermissions(permissions);
         }
 
         // ============================================================

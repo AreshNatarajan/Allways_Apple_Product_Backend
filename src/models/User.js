@@ -96,6 +96,24 @@ const userSchema = new mongoose.Schema(
     },
 
     // =========================
+    // PERMISSIONS
+    // =========================
+    // Per-user grant overrides for BRANCH_ADMIN/STAFF, on top of - and
+    // able to exceed - what their role can do by default. Flat map of
+    // operation key -> boolean (see config/permissionCatalog.js for the
+    // full key set and shopping-frontend's userPermissionsCatalog.js,
+    // which this mirrors exactly). Never consulted for SUPER_ADMIN -
+    // their access is fixed in code (everything except creating a
+    // Sale), not configurable through this field. A handful of keys
+    // (see SUPER_ADMIN_ONLY_KEYS) can never be true here for anyone
+    // else regardless of what's stored - manageUser.controller.js
+    // strips them back to false on every save as a backstop.
+    permissions: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    // =========================
     // AUDIT FIELDS
     // =========================
     createdBy: {

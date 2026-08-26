@@ -28,6 +28,10 @@ import { getUserByIdController } from "../../controllers/users/getUserById.contr
 // Literal-path routes are registered before the parameterized "/:id"
 // routes further down.
 
+// User management (including View) is permanently Super Admin-only end
+// to end, never delegated by the per-user permission system - see
+// config/permissionCatalog.js's SUPER_ADMIN_ONLY_KEYS. Every route in
+// this file stays onlySuperAdmin.
 router.get(
   "/list",
   authMiddleware,
@@ -72,8 +76,9 @@ router.put(
   updateStaffController
 );
 
-// Single-user read - SUPER_ADMIN only. Registered after the literal
-// /list and /login-history paths above so those keep matching first.
+// Single-user read - same onlySuperAdmin as /list above. Registered
+// after the literal /list and /login-history paths above so those keep
+// matching first.
 router.get(
   "/:id",
   authMiddleware,

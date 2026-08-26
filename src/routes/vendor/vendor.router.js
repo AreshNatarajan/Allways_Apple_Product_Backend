@@ -2,6 +2,7 @@ import express from "express";
 const router = express.Router();
 
 import authMiddleware from "../../middleware/authMiddleware.js";
+import requirePermission from "../../middleware/requirePermission.js";
 
 import { createVendorController } from "../../controllers/vendor/createVendor.controller.js";
 import { getVendorController } from "../../controllers/vendor/getVendor.controller.js";
@@ -14,10 +15,13 @@ import { getVendorForTablePagination } from "../../controllers/vendor/getVendroF
 import { getVendorStatsController } from "../../controllers/vendor/getVendorStats.controller.js";
 
 // Vendor is a GLOBAL master (no branchId anywhere), shared across every
-// branch. Both reads AND mutations (create/update/deactivate/
-// reactivate) are open to any authenticated role - SUPER_ADMIN,
-// BRANCH_ADMIN, and STAFF can all manage vendors, since any of them can
-// end up needing to add/fix a vendor while creating a Purchase.
+// branch - one created by a branch user is usable from every branch,
+// unaffected by this permission system, which only ever gates WHETHER
+// a user can create/edit/deactivate a vendor, never scopes it. Reads
+// are open to any authenticated role. Mutations are gated by the
+// per-user permission system (requirePermission) - SUPER_ADMIN always
+// passes, BRANCH_ADMIN/STAFF need the matching vendor.* grant, which
+// defaults to true for both today but can be individually revoked.
 
 // =========================
 // STATIC ROUTES FIRST
@@ -30,10 +34,10 @@ router.get("/pagination", authMiddleware, getVendorForTablePagination);
 // /pagination is kept mounted as-is for the existing frontend caller.
 router.get("/list", authMiddleware, getVendorForTablePagination);
 
-router.post("/create", authMiddleware, createVendorController);
-router.put("/update/:vendorId", authMiddleware, updateVendorController);
-router.delete("/delete/:vendorId", authMiddleware, deleteVendorController);
-router.patch("/:vendorId/reactivate", authMiddleware, reactivateVendorController);
+router.post("/create", authMiddleware, requirePermission("vendor.create"), createVendorController);
+router.put("/update/:vendorId", authMiddleware, requirePermission("vendor.edit"), updateVendorController);
+router.delete("/delete/:vendorId", authMiddleware, requirePermission("vendor.status"), deleteVendorController);
+router.patch("/:vendorId/reactivate", authMiddleware, requirePermission("vendor.status"), reactivateVendorController);
 
 // =========================
 // DYNAMIC ROUTES LAST

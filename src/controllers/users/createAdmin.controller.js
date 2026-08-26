@@ -2,6 +2,7 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import User from "../../models/User.js";
 import bcrypt from "bcryptjs";
 import { resolveActiveBranch } from "../../services/branchValidation.service.js";
+import { defaultPermissionsForRole } from "../../config/permissionCatalog.js";
 
 /**
  * Create Branch Admin
@@ -104,7 +105,10 @@ export const createAdminController = async (req, res) => {
         // ============================================================
         // 9. CREATE ADMIN USER - a branch can now have more than one
         // Branch Admin, so this deliberately does not check for an
-        // existing one first.
+        // existing one first. Seeded with BRANCH_ADMIN's default
+        // permissions (not the schema's empty {} default) so a new
+        // admin can actually use the app immediately, without SUPER_ADMIN
+        // having to visit Manage Access first just to unlock anything.
         // ============================================================
         const admin = await User.create({
             name: name.trim(),
@@ -116,6 +120,7 @@ export const createAdminController = async (req, res) => {
             branchId: branchId,
             isActive: isActive !== undefined ? isActive : true,
             createdBy: req.user._id,
+            permissions: defaultPermissionsForRole("BRANCH_ADMIN"),
         });
 
         // ============================================================

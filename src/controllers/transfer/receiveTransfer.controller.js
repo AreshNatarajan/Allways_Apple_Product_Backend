@@ -46,6 +46,11 @@ export const receiveTransferController = async (req, res) => {
       if (!user.branchId || user.branchId.toString() !== transfer.destinationBranchId.toString()) {
         return rollback("Only the destination branch can receive this transfer", 403);
       }
+      // transfer.receive per-user grant (defaults to true for
+      // BRANCH_ADMIN/STAFF today, can be revoked) - see config/permissionCatalog.js.
+      if (user.permissions?.["transfer.receive"] !== true) {
+        return rollback("You don't have permission to perform this action", 403);
+      }
     }
 
     if (transfer.status !== "DISPATCHED") {
