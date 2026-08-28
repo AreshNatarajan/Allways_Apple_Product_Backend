@@ -15,6 +15,7 @@ const MOVEMENT_LABELS = {
     TRANSFER_OUT: { label: "Transfer", description: "Dispatched to another branch" },
     TRANSFER_IN: { label: "Transfer", description: "Received from another branch" },
     SALE: { label: "Sale", description: "Sold to a customer" },
+    RETURN: { label: "Return", description: "Returned by customer" },
     DAMAGE: { label: "Damage", description: "Marked as damaged" },
     REJECT: { label: "Reject", description: "Rejected during receive" },
     ADJUSTMENT: { label: "Adjustment", description: "Manual stock adjustment" },
@@ -76,16 +77,20 @@ export const getSerializedItemDetailController = async (req, res) => {
         }));
 
         const hasAdjustment = movements.some((m) => m.type === "ADJUSTMENT");
-        // "Return" has no corresponding StockMovement type at all yet -
-        // always a future placeholder. "Adjustment" is only a placeholder
-        // when no real adjustment has ever happened to this unit.
-        timeline.push({
-            type: "RETURN",
-            label: "Return",
-            description: "Not yet supported",
-            date: null,
-            future: true,
-        });
+        const hasReturn = movements.some((m) => m.type === "RETURN");
+        // Both "Return" and "Adjustment" are placeholders only when no
+        // real movement of that type has ever happened to this unit -
+        // a real RETURN movement (see createSaleReturn.controller.js)
+        // already appears in the timeline above via the movements map.
+        if (!hasReturn) {
+            timeline.push({
+                type: "RETURN",
+                label: "Return",
+                description: "No returns recorded",
+                date: null,
+                future: true,
+            });
+        }
         if (!hasAdjustment) {
             timeline.push({
                 type: "ADJUSTMENT",

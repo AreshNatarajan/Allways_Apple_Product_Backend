@@ -13,6 +13,8 @@ import { getSaleByIdController } from '../../controllers/sale/getSaleById.contro
 import { getAllSalesController } from '../../controllers/sale/getAllSales.controller.js';
 import { uploadSaleSelfieController } from '../../controllers/sale/uploadSaleSelfie.controller.js';
 import { reviewSaleController } from '../../controllers/sale/reviewSale.controller.js';
+import { createSaleReturnController } from '../../controllers/sale/createSaleReturn.controller.js';
+import { getSaleReturnsController } from '../../controllers/sale/getSaleReturns.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -47,12 +49,29 @@ router.get('/stats', authMiddleware, statsSaleController);
 router.get('/', authMiddleware, getAllSalesController);
 
 // Accountability selfie - part of the sale-creation flow, same
-// BRANCH_ADMIN/STAFF-only gate as the rest of it.
-router.post('/upload-selfie', authMiddleware, onlyBranchRoles, uploadSaleSelfieController);
+// onlyBranchRoles + requirePermission('sale.create') gate as /create
+// itself, so a STAFF user with sale.create revoked can't stage a selfie
+// for a sale they can no longer create either. Confirmed used only by
+// the live SaleCreate flow (SelfieCaptureModal.jsx), not shared.
+router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), uploadSaleSelfieController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.
 router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewSaleController);
+
+// Sale Return - no onlyBranchRoles gate (unlike /create): SUPER_ADMIN
+// can legitimately process a return even without owning branch
+// inventory, since stock is coming back in, not being consumed from
+// stock they don't have. requirePermission('sale.return') still lets
+// SUPER_ADMIN through unconditionally and requires the grant for
+// BRANCH_ADMIN/STAFF (defaults true, matches sale.create/sale.edit).
+// No separate return-review route - a return resets the sale's own
+// processStatus back to PENDING_REVIEW (see createSaleReturn.controller.js),
+// and reviewSale.controller.js's one /:id/review action covers it -
+// create/edit/return/(future) exchange all share that single approve/
+// reject, never their own independent one.
+router.post('/:id/return', authMiddleware, requirePermission('sale.return'), createSaleReturnController);
+router.get('/:id/returns', authMiddleware, getSaleReturnsController);
 
 // Add route for getting sale by ID
 router.get('/:id', authMiddleware, getSaleByIdController);

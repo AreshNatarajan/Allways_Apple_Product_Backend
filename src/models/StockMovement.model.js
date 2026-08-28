@@ -25,6 +25,7 @@ const stockMovementSchema = new mongoose.Schema(
         "TRANSFER_OUT",
         "TRANSFER_IN",
         "SALE",
+        "RETURN",                    // Sale Return - unit/quantity restored to branch stock
         "DAMAGE",
         "REJECT",
         "ADJUSTMENT",
@@ -124,7 +125,7 @@ const stockMovementSchema = new mongoose.Schema(
     // document without guessing which collection to look in.
     referenceType: {
       type: String,
-      enum: ["Purchase", "PendingReceive", "ReceiveHistory", "Transfer", "Sale"],
+      enum: ["Purchase", "PendingReceive", "ReceiveHistory", "Transfer", "Sale", "SaleReturn"],
       required: true,
       immutable: true,
     },
@@ -284,7 +285,7 @@ stockMovementSchema.index({ type: 1, performedAt: -1 });
 // $lt/$lte/$type/$and - there is no $ne/$or, so "every referenceType"
 // is expressed as one $eq-scoped index per type rather than a single
 // negated one.
-const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale", "Transfer"];
+const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale", "Transfer", "SaleReturn"];
 DEDUPED_REFERENCE_TYPES.forEach((referenceType) => {
   stockMovementSchema.index(
     { referenceType: 1, referenceId: 1, batchId: 1, serialId: 1, type: 1 },

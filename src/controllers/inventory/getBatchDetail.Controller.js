@@ -15,6 +15,7 @@ const MOVEMENT_LABELS = {
     TRANSFER_OUT: { label: "Transfer", description: "Dispatched to another branch" },
     TRANSFER_IN: { label: "Transfer", description: "Received from another branch" },
     SALE: { label: "Sale", description: "Sold to a customer" },
+    RETURN: { label: "Return", description: "Returned by customer" },
     DAMAGE: { label: "Damage", description: "Marked as damaged" },
     REJECT: { label: "Reject", description: "Rejected during receive" },
     ADJUSTMENT: { label: "Adjustment", description: "Manual stock adjustment" },
@@ -126,7 +127,14 @@ export const getBatchDetailController = async (req, res) => {
         }));
 
         const hasAdjustment = movements.some((m) => m.type === "ADJUSTMENT");
-        timeline.push({ type: "RETURN", label: "Return", description: "Not yet supported", date: null, future: true });
+        const hasReturn = movements.some((m) => m.type === "RETURN");
+        // Both are placeholders only when no real movement of that type
+        // has ever happened to this batch - a real RETURN movement (see
+        // createSaleReturn.controller.js) already appears in the
+        // timeline above via the movements map.
+        if (!hasReturn) {
+            timeline.push({ type: "RETURN", label: "Return", description: "No returns recorded", date: null, future: true });
+        }
         if (!hasAdjustment) {
             timeline.push({ type: "ADJUSTMENT", label: "Adjustment", description: "No adjustments recorded", date: null, future: true });
         }

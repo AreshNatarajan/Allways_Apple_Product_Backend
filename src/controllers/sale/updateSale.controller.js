@@ -8,6 +8,7 @@ import Inventory from "../../models/Inventory.modal.js";
 import Customer from "../../models/Customer.modal.js";
 import Purchase from "../../models/Purchase.modal.js";
 import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
+import SaleReturn from "../../models/SaleReturn.modal.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import {
@@ -116,6 +117,27 @@ export const updateSaleController = async (req, res) => {
         const changes = [];
         const gstConfig = await getOrCreateGstConfig({ session });
 
+        // ============================================================
+        // RETURNED ITEMS - LOCKED. Any item already returned (regardless
+        // of the return's own review status - a REJECTED return is a
+        // pure audit flag, it never reverses the stock/refund that
+        // already applied at creation, see createSaleReturn.controller.js)
+        // is completely locked here: no price/quantity/serial/batch
+        // correction, no removal. Checked explicitly so an editor gets a
+        // clear rejection instead of silently corrupting the stock math
+        // this controller's own reversal logic below would otherwise
+        // apply a second time on top of what the return already did.
+        // ============================================================
+        const existingReturns = await SaleReturn.find({ saleId: sale._id, isDeleted: false }).session(session);
+        const returnedSerialIds = new Set();
+        const returnedBatchIds = new Set();
+        for (const ret of existingReturns) {
+            for (const line of ret.items) {
+                if (line.isSerialized) returnedSerialIds.add(String(line.productSerialId));
+                else returnedBatchIds.add(String(line.batchId));
+            }
+        }
+
         // Working copy of the items array - every section below reads/
         // mutates this, sale.items is only written back once at the end.
         let workingItems = sale.items.map((it) => (it.toObject ? it.toObject() : { ...it }));
@@ -178,6 +200,10 @@ export const updateSaleController = async (req, res) => {
             if (idx === -1) continue;
             const line = workingItems[idx];
 
+            if (returnedSerialIds.has(String(serialId))) {
+                throw buildValidationError(`Serial ${line.serialNumber} has already been returned and cannot be removed from this sale.`);
+            }
+
             const serial = await ProductSerial.findOne({ _id: serialId, saleId: sale._id, status: "SOLD" }).session(session);
             if (!serial) {
                 throw buildValidationError(`Serial ${line.serialNumber} has already been reconciled elsewhere and can't be removed from this sale.`);
@@ -202,6 +228,10 @@ export const updateSaleController = async (req, res) => {
             const idx = workingItems.findIndex((it) => !it.isSerialized && String(it.batchId) === batchId);
             if (idx === -1) continue;
             const line = workingItems[idx];
+
+            if (returnedBatchIds.has(batchId)) {
+                throw buildValidationError(`Batch ${line.batchNumber} has already been returned and cannot be removed from this sale.`);
+            }
 
             const batchStock = await BatchStock.findOne({ batchId: line.batchId, productId: line.productId, branchId: sale.branchId }).session(session);
             if (!batchStock) throw buildValidationError(`Batch ${line.batchNumber} not found for reversal.`);
@@ -240,6 +270,10 @@ export const updateSaleController = async (req, res) => {
             const idx = workingItems.findIndex((it) => it.isSerialized && String(it.productSerialId) === String(productSerialId));
             if (idx === -1) continue;
             const line = workingItems[idx];
+
+            if (returnedSerialIds.has(String(productSerialId))) {
+                throw buildValidationError(`Serial ${line.serialNumber} has already been returned and cannot be edited.`);
+            }
 
             const currentSerial = await ProductSerial.findOne({ _id: productSerialId, saleId: sale._id, status: "SOLD" }).session(session);
             if (!currentSerial) {
@@ -379,6 +413,10 @@ export const updateSaleController = async (req, res) => {
             const idx = workingItems.findIndex((it) => !it.isSerialized && String(it.batchId) === String(batchId));
             if (idx === -1) continue;
             const line = workingItems[idx];
+
+            if (returnedBatchIds.has(String(batchId))) {
+                throw buildValidationError(`Batch ${line.batchNumber} has already been returned and cannot be edited.`);
+            }
 
             const currentBatchStock = await BatchStock.findOne({ batchId: line.batchId, productId: line.productId, branchId: sale.branchId }).session(session);
             if (!currentBatchStock) throw buildValidationError(`Batch ${line.batchNumber} not found for correction.`);

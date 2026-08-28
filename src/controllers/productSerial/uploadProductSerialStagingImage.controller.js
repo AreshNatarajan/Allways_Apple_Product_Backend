@@ -6,7 +6,10 @@ import {
 import { putObject } from "../fileUpload/Products/putObject.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
-// SUPER_ADMIN / BRANCH_ADMIN only (see onlyAdminRoles in the router).
+// Gated by requirePermission('purchase.create') in the router - same
+// grant as creating the purchase itself, so any role that can create a
+// purchase can also stage its images (see purchase.create in
+// config/permissionCatalog.js).
 // Uploads image(s) for a serialized unit BEFORE that unit's
 // ProductSerial document exists - a purchase is composed client-side
 // row by row (Purchase Entry), and the physical units it will create

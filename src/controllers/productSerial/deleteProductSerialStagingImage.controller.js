@@ -1,7 +1,7 @@
 import { deleteObject } from "../fileUpload/Products/deleteObject.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
-// SUPER_ADMIN / BRANCH_ADMIN only. Removes a staged image (uploaded via
+// Gated by requirePermission('purchase.create') in the router. Removes a staged image (uploaded via
 // uploadProductSerialStagingImagesController) while a purchase is still
 // being composed client-side, before any ProductSerial document exists
 // to own it - so there's no DB record to update here, just the S3

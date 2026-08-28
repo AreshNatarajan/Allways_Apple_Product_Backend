@@ -32,19 +32,34 @@ import { uploadSignature } from '../../middleware/uploadSignature.middleware.js'
 
 import { uploadPaymentEvidenceController } from '../../controllers/purchase/uploadPaymentEvidence.controller.js'
 
+// Pre-upload endpoints, called before the Purchase document exists
+// (staging) - same requirePermission('purchase.create') gate as the
+// purchase-creation flow they're actually part of, so a STAFF user with
+// that grant revoked can't stage evidence for a purchase they can no
+// longer create either. Confirmed Purchase-only in the live app (the
+// only other importer of uploadSignatureAPI is SaleCreateEntryTable.jsx,
+// which isn't wired into any route).
 router.post(
     "/upload-invoice",
     authMiddleware,
+    requirePermission('purchase.create'),
     uploadPurchaseInvoiceController
 );
 
 router.post(
     '/upload-signature',
     authMiddleware,
+    requirePermission('purchase.create'),
     uploadSignature.single("signature"),
     uploadSignatureController
 )
 
+// NOT gated by purchase.create - this endpoint is genuinely shared
+// (plain S3 image upload, no ownership check) across Purchase's own
+// PaymentDetails, Sale's SalePaymentSection, and SaleReturnModal's
+// refund evidence upload. Stays open to any authenticated user, same
+// as it's always been - narrowing it to purchase.create would silently
+// break Sale/Return evidence uploads for anyone without that grant.
 router.post(
     '/upload-payment',
     authMiddleware,
