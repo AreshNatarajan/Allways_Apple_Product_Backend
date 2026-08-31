@@ -13,12 +13,12 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  * range), this has no date range at all - it's always "what's
  * AVAILABLE right now", grouped by configuration.
  *
- * "Configuration" groups on this unit's own ProductSerial.description.main
- * (the free-text note entered at Purchase time, e.g. "iPhone 14 plus /
- * 128GB") when present; a unit whose description was left blank falls
- * back to "<Product name> / <Model number>" (both guaranteed non-blank
- * for a serialized product, see Product.modal.js's validators) so it's
- * never silently dropped from the report.
+ * "Configuration" groups on the unit's Product master (productId), and
+ * displays that product's `name` - never ProductSerial.description
+ * (that's a per-unit condition/cosmetic note, not the product identity).
+ * Grouping by productId rather than by the name string itself means two
+ * distinct products that happen to share the same display name are
+ * still counted as separate rows, not silently merged.
  *
  * Role: any authenticated role, same as /in-out (a stock list, not a
  * financial report - no purchase price/cost ever included). SUPER_ADMIN
@@ -61,24 +61,14 @@ export const getDailyStockReportController = async (req, res) => {
             { $unwind: "$product" },
             { $match: { "product.isDeleted": false } },
             {
-                $addFields: {
-                    trimmedDescription: { $trim: { input: { $ifNull: ["$description.main", ""] } } },
+                $group: {
+                    _id: "$productId",
+                    configuration: { $first: "$product.name" },
+                    qty: { $sum: 1 },
                 },
             },
-            {
-                $addFields: {
-                    configuration: {
-                        $cond: [
-                            { $ne: ["$trimmedDescription", ""] },
-                            "$trimmedDescription",
-                            { $concat: ["$product.name", " / ", { $ifNull: ["$product.modelNumber", ""] }] },
-                        ],
-                    },
-                },
-            },
-            { $group: { _id: "$configuration", qty: { $sum: 1 } } },
-            { $sort: { _id: 1 } },
-            { $project: { _id: 0, configuration: "$_id", qty: 1 } },
+            { $sort: { configuration: 1 } },
+            { $project: { _id: 0, configuration: 1, qty: 1 } },
         ]);
 
         return successResponse(res, "Daily stock report retrieved successfully", {
