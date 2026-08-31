@@ -15,6 +15,9 @@ import { uploadSaleSelfieController } from '../../controllers/sale/uploadSaleSel
 import { reviewSaleController } from '../../controllers/sale/reviewSale.controller.js';
 import { createSaleReturnController } from '../../controllers/sale/createSaleReturn.controller.js';
 import { getSaleReturnsController } from '../../controllers/sale/getSaleReturns.controller.js';
+import { createSaleExchangeController } from '../../controllers/sale/createSaleExchange.controller.js';
+import { getSaleExchangesController } from '../../controllers/sale/getSaleExchanges.controller.js';
+import { getExchangeReplacementUnitController } from '../../controllers/sale/getExchangeReplacementUnit.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -68,10 +71,24 @@ router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewSaleController
 // No separate return-review route - a return resets the sale's own
 // processStatus back to PENDING_REVIEW (see createSaleReturn.controller.js),
 // and reviewSale.controller.js's one /:id/review action covers it -
-// create/edit/return/(future) exchange all share that single approve/
-// reject, never their own independent one.
+// create/edit/return/exchange all share that single approve/reject,
+// never their own independent one.
 router.post('/:id/return', authMiddleware, requirePermission('sale.return'), createSaleReturnController);
 router.get('/:id/returns', authMiddleware, getSaleReturnsController);
+
+// Sale Exchange - same reasoning as Return above (no onlyBranchRoles,
+// requirePermission('sale.exchange') lets SUPER_ADMIN through
+// unconditionally, no separate review route).
+//
+// The replacement-unit lookup below is deliberately its own endpoint,
+// NOT a reuse of GET /sale/scanner/:barcodeValue - that route is
+// onlyBranchRoles-gated and scopes to req.user.branchId, which blocks
+// SUPER_ADMIN entirely (they have no branchId) even though SUPER_ADMIN
+// is explicitly allowed to process an exchange. This scopes to the
+// SALE's own branch instead, matching who's actually allowed here.
+router.get('/:id/exchange-scanner/:barcodeValue', authMiddleware, requirePermission('sale.exchange'), getExchangeReplacementUnitController);
+router.post('/:id/exchange', authMiddleware, requirePermission('sale.exchange'), createSaleExchangeController);
+router.get('/:id/exchanges', authMiddleware, getSaleExchangesController);
 
 // Add route for getting sale by ID
 router.get('/:id', authMiddleware, getSaleByIdController);

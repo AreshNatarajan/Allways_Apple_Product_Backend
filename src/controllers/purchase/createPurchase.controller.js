@@ -307,6 +307,14 @@ export const createPurchaseController = async (req, res) => {
             notes: notes || "",
             createdBy: user._id,
             updatedBy: user._id,
+            // EOD review - same role split as updatePurchase.controller.js's
+            // own reset rule (see Purchase.modal.js's processStatus
+            // comment): a non-SUPER_ADMIN-created purchase needs review,
+            // a SUPER_ADMIN one doesn't. Previously never set here at all,
+            // so every new purchase silently stayed null regardless of
+            // creator - this was the actual gap, not the frontend card's
+            // render condition (which was already correct).
+            processStatus: isBranchFlow ? "PENDING_REVIEW" : null,
         });
 
         await purchase.save({ session });

@@ -2,6 +2,7 @@
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import Branch from "../../models/Branch.modal.js";
+import { getReturnExchangeAdjustments } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 /**
@@ -85,7 +86,16 @@ const endOfToday = () => {
 // instead of just re-displaying totalProfit directly: the waterfall
 // shows the OWNER where the government's cut actually comes out of,
 // while still reconciling to the one true profit figure.
-const getWaterfallTotals = async (match) => {
+// `adjustments` folds in the real economic effect of any Return/Exchange
+// in this same period (see getReturnExchangeAdjustments.js) into the
+// four RAW base figures (sales/baseCost/gstCollected/inputGstCredit) -
+// never into profitBeforeTax/gstTax/finalProfit directly. Those three
+// stay fully DERIVED from the (now-adjusted) base figures via this
+// function's own existing formula below, so the "GST is a pass-through
+// by construction" reconciliation this file's top comment describes
+// keeps holding exactly, adjusted or not - it's the same math, just
+// fed slightly different inputs.
+const getWaterfallTotals = async (match, adjustments = null) => {
   const [agg] = await Sale.aggregate([
     { $match: match },
     {
@@ -101,13 +111,15 @@ const getWaterfallTotals = async (match) => {
     },
   ]);
 
+  const adj = adjustments || { salesAdjustment: 0, costAdjustment: 0, gstAdjustment: 0, purchaseGstAdjustment: 0 };
+
   const baseSales = agg?.baseSales || 0;
   const baseProfit = round2(agg?.baseProfit || 0);
-  const baseCost = round2(baseSales - baseProfit);
-  const gstCollected = round2(agg?.gstCollected || 0);
-  const inputGstCredit = round2(agg?.inputGstCredit || 0);
+  const baseCost = round2(baseSales - baseProfit) + adj.costAdjustment;
+  const gstCollected = round2(agg?.gstCollected || 0) + adj.gstAdjustment;
+  const inputGstCredit = round2(agg?.inputGstCredit || 0) + adj.purchaseGstAdjustment;
 
-  const sales = round2(agg?.grossSales || 0);
+  const sales = round2(agg?.grossSales || 0) + adj.salesAdjustment;
   // Base cost plus the input GST actually paid at purchase time - see
   // the function comment for why this (not the base-only cost) is the
   // right counterpart to "sales" above.
@@ -156,18 +168,18 @@ const withComparison = (current, previous) => {
 // (no item-level unwind) - same gross-Sales/gross-Cost math as
 // getWaterfallTotals (see its comment for why), just grouped by
 // day/week/month instead of the whole period.
-const getTrend = async (match) => {
+const getTrend = async (match, adjustmentsDaily = []) => {
   const sales = await Sale.find(match)
     .select("saleDate subtotalAmount totalDiscount totalProfit totalGstAmount totalPurchaseGstAmount totalAmount")
     .lean();
+
+  const emptyBucket = (key) => ({ period: key, baseSales: 0, grossSales: 0, baseProfit: 0, gstCollected: 0, inputGstCredit: 0, salesAdj: 0, costAdj: 0, gstAdj: 0, purchaseGstAdj: 0 });
 
   const buildBuckets = (keyFn) => {
     const buckets = new Map();
     for (const s of sales) {
       const key = keyFn(s.saleDate);
-      if (!buckets.has(key)) {
-        buckets.set(key, { period: key, baseSales: 0, grossSales: 0, baseProfit: 0, gstCollected: 0, inputGstCredit: 0 });
-      }
+      if (!buckets.has(key)) buckets.set(key, emptyBucket(key));
       const bucket = buckets.get(key);
       bucket.baseSales += (s.subtotalAmount || 0) - (s.totalDiscount || 0);
       bucket.grossSales += s.totalAmount || 0;
@@ -175,14 +187,32 @@ const getTrend = async (match) => {
       bucket.gstCollected += s.totalGstAmount || 0;
       bucket.inputGstCredit += s.totalPurchaseGstAmount || 0;
     }
+    // Return/Exchange adjustments come pre-bucketed by day (see
+    // getReturnExchangeAdjustments.js) - re-keyed here to whichever
+    // granularity this pass is building (day/week/month all parse the
+    // "YYYY-MM-DD" date string the same way the Sale-side keyFn does).
+    for (const a of adjustmentsDaily) {
+      const key = keyFn(a.date);
+      if (!buckets.has(key)) buckets.set(key, emptyBucket(key));
+      const bucket = buckets.get(key);
+      bucket.salesAdj += a.salesAdjustment;
+      bucket.costAdj += a.costAdjustment;
+      bucket.gstAdj += a.gstAdjustment;
+      bucket.purchaseGstAdj += a.purchaseGstAdjustment;
+    }
     return Array.from(buckets.values())
       .sort((a, b) => a.period.localeCompare(b.period))
       .map((b) => {
-        const baseCost = b.baseSales - b.baseProfit;
-        const sales = round2(b.grossSales);
-        const productCost = round2(baseCost + b.inputGstCredit);
+        // Same composition as getWaterfallTotals - adjustments fold
+        // into the raw base figures, profitBeforeTax/gstTax/finalProfit
+        // stay fully derived from them via the unchanged formula below.
+        const baseCost = (b.baseSales - b.baseProfit) + b.costAdj;
+        const sales = round2(b.grossSales + b.salesAdj);
+        const gstCollected = round2(b.gstCollected + b.gstAdj);
+        const inputGstCredit = round2(b.inputGstCredit + b.purchaseGstAdj);
+        const productCost = round2(baseCost + inputGstCredit);
         const profitBeforeTax = round2(sales - productCost);
-        const gstTax = round2(b.gstCollected - b.inputGstCredit);
+        const gstTax = round2(gstCollected - inputGstCredit);
         return {
           period: b.period,
           sales,
@@ -440,12 +470,24 @@ export const getProfitLossController = async (req, res) => {
     const previousMatch = { ...baseMatch, saleDate: { $gte: previousStart, $lte: previousEnd } };
 
     // ============================================================
+    // RETURN/EXCHANGE ADJUSTMENTS - fetched once per period (current +
+    // previous, matching how the waterfall itself already runs twice
+    // for the % change comparison), then folded into both the waterfall
+    // totals and the trend buckets below. See getReturnExchangeAdjustments.js
+    // for the full financial model.
+    // ============================================================
+    const [currentAdjustments, previousAdjustments] = await Promise.all([
+      getReturnExchangeAdjustments({ branchObjectId, start, end }),
+      getReturnExchangeAdjustments({ branchObjectId, start: previousStart, end: previousEnd }),
+    ]);
+
+    // ============================================================
     // RUN EVERYTHING IN PARALLEL
     // ============================================================
     const [currentWaterfallTotals, previousWaterfallTotals, trend, serializedUnitPL, nonSerializedBatchPL] = await Promise.all([
-      getWaterfallTotals(currentMatch),
-      getWaterfallTotals(previousMatch),
-      getTrend(currentMatch),
+      getWaterfallTotals(currentMatch, currentAdjustments),
+      getWaterfallTotals(previousMatch, previousAdjustments),
+      getTrend(currentMatch, currentAdjustments.daily),
       getSerializedUnitPL(currentMatch),
       getNonSerializedBatchPL(currentMatch),
     ]);

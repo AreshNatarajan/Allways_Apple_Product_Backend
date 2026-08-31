@@ -12,6 +12,7 @@ import Transfer from "../../models/Transfer.modal.js";
 import PendingReceive from "../../models/PendingReceive.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
+import { getReturnExchangeAdjustmentRows, sumAdjustmentRows, bucketAdjustmentRowsByDay } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 /**
@@ -59,6 +60,20 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const purchaseBranchCondition = (id) => ({ $or: [{ branchId: id }, { "items.branchId": id }] });
 
 const itemQuantity = (item) => (item.isSerialized ? 1 : item.quantity || 0);
+
+// Sale is a frozen historical record - a Return/Exchange never rewrites
+// it, so every revenue/profit figure below (all computed purely from
+// Sale before this) overstated anything later returned or exchanged.
+// See getReturnExchangeAdjustments.js for the full financial model.
+// Rows are fetched ONCE, all-time and branch-scoped only (no date
+// filter - this dashboard juggles many different ad-hoc windows: today/
+// week/month/year/monthAgo/yearAgo/trendRange, unlike P&L's single
+// current/previous period), then each section below filters/sums the
+// same row set to whatever boundary it already computes - mirroring
+// how getTodayKpis/getProfitSummary etc. already fetch raw Sale rows
+// once and facet them in JS rather than re-querying per window.
+const sumAdjustmentsSince = (rows, sinceDate) =>
+    sumAdjustmentRows(sinceDate ? rows.filter((r) => new Date(r.date) >= sinceDate) : rows);
 
 export const getDashboardController = async (req, res) => {
     try {
@@ -110,6 +125,10 @@ export const getDashboardController = async (req, res) => {
             nonSerializedLowStockThreshold: gstConfig.inventory.nonSerializedLowStockThreshold,
         };
 
+        // Fetched once, all-time, branch-scoped only - see the comment on
+        // sumAdjustmentsSince above for why this isn't date-filtered here.
+        const adjustmentRows = await getReturnExchangeAdjustmentRows({ branchObjectId });
+
         // ============================================================
         // RUN EVERYTHING IN PARALLEL
         // ============================================================
@@ -134,8 +153,8 @@ export const getDashboardController = async (req, res) => {
             sections,
             branchComparison,
         ] = await Promise.all([
-            getSummary(saleBranchMatch, purchaseBranchMatch, branchObjectId),
-            getSalesOverview(saleBranchMatch),
+            getSummary(saleBranchMatch, purchaseBranchMatch, branchObjectId, adjustmentRows),
+            getSalesOverview(saleBranchMatch, adjustmentRows),
             getSalesTrend(saleBranchMatch, dateFilter, period),
             getTopProductsLegacy(saleBranchMatch, dateFilter),
             getTopCustomersLegacy(saleBranchMatch, dateFilter),
@@ -144,10 +163,10 @@ export const getDashboardController = async (req, res) => {
             getPendingReceivesList(branchObjectId, 10),
             getRecentActivities(branchObjectId),
 
-            getTodayKpis(saleBranchMatch, purchaseBranchMatch),
-            getProfitSummary(saleBranchMatch),
-            getProfitTrend(saleBranchMatch),
-            getRevenueTrend(saleBranchMatch, purchaseBranchMatch, trendRange),
+            getTodayKpis(saleBranchMatch, purchaseBranchMatch, adjustmentRows),
+            getProfitSummary(saleBranchMatch, adjustmentRows),
+            getProfitTrend(saleBranchMatch, adjustmentRows),
+            getRevenueTrend(saleBranchMatch, purchaseBranchMatch, trendRange, adjustmentRows),
             getPaymentStatus(saleBranchMatch, purchaseBranchMatch),
             getPaymentMethodStats(saleBranchMatch),
             getStockOverview(branchObjectId, stockThresholds),
@@ -314,7 +333,7 @@ const keyFnFor = (granularity) =>
 // 📊 SUMMARY (existing key, bug-fixed)
 // ============================================================
 
-const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId) => {
+const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId, adjustmentRows = []) => {
     const customerFilter = branchObjectId ? { branchId: branchObjectId } : {};
     const totalCustomers = await Customer.countDocuments({ ...customerFilter, isDeleted: false });
     const totalVendors = await Vendor.countDocuments({ isDeleted: false, isActive: true });
@@ -328,6 +347,7 @@ const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId) 
         { $group: { _id: null, totalSales: { $sum: 1 }, totalRevenue: { $sum: "$totalAmount" }, totalProfit: { $sum: "$totalProfit" } } },
     ]);
     const salesData = salesAgg || { totalSales: 0, totalRevenue: 0, totalProfit: 0 };
+    const allTimeAdjustments = sumAdjustmentsSince(adjustmentRows, null);
 
     const [purchaseAgg] = await Purchase.aggregate([
         { $match: { status: "COMPLETED", isDeleted: false, ...purchaseBranchMatch } },
@@ -351,8 +371,8 @@ const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId) 
         totalProducts,
         totalSerials,
         totalSales: salesData.totalSales,
-        totalRevenue: round2(salesData.totalRevenue),
-        totalProfit: round2(salesData.totalProfit),
+        totalRevenue: round2(salesData.totalRevenue + allTimeAdjustments.salesAdjustment),
+        totalProfit: round2(salesData.totalProfit + allTimeAdjustments.profitAdjustment),
         totalPurchases: purchaseData.totalPurchases,
         totalPurchaseAmount: round2(purchaseData.totalPurchaseAmount),
         pendingReceives,
@@ -364,7 +384,7 @@ const getSummary = async (saleBranchMatch, purchaseBranchMatch, branchObjectId) 
 // 📈 SALES OVERVIEW (existing key, bug-fixed via $facet - one query)
 // ============================================================
 
-const getSalesOverview = async (saleBranchMatch) => {
+const getSalesOverview = async (saleBranchMatch, adjustmentRows = []) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0, 0, 0, 0);
@@ -383,13 +403,15 @@ const getSalesOverview = async (saleBranchMatch) => {
         },
     ]);
 
-    const pick = (arr) => arr?.[0] ? { count: arr[0].count, revenue: round2(arr[0].revenue), profit: round2(arr[0].profit) } : { count: 0, revenue: 0, profit: 0 };
+    const pick = (arr, adj) => arr?.[0]
+        ? { count: arr[0].count, revenue: round2(arr[0].revenue + adj.salesAdjustment), profit: round2(arr[0].profit + adj.profitAdjustment) }
+        : { count: 0, revenue: round2(adj.salesAdjustment), profit: round2(adj.profitAdjustment) };
 
     return {
-        today: pick(result.today),
-        thisWeek: pick(result.thisWeek),
-        thisMonth: pick(result.thisMonth),
-        thisYear: pick(result.thisYear),
+        today: pick(result.today, sumAdjustmentsSince(adjustmentRows, todayStart)),
+        thisWeek: pick(result.thisWeek, sumAdjustmentsSince(adjustmentRows, weekStart)),
+        thisMonth: pick(result.thisMonth, sumAdjustmentsSince(adjustmentRows, monthStart)),
+        thisYear: pick(result.thisYear, sumAdjustmentsSince(adjustmentRows, yearStart)),
     };
 };
 
@@ -469,7 +491,7 @@ const getTopCustomersLegacy = async (saleBranchMatch, dateFilter) => {
 // 🕐 TODAY KPIs
 // ============================================================
 
-const getTodayKpis = async (saleBranchMatch, purchaseBranchMatch) => {
+const getTodayKpis = async (saleBranchMatch, purchaseBranchMatch, adjustmentRows = []) => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
     const [todaySales, todayPurchases] = await Promise.all([
@@ -481,8 +503,9 @@ const getTodayKpis = async (saleBranchMatch, purchaseBranchMatch) => {
             .lean(),
     ]);
 
-    const sales = round2(todaySales.reduce((s, x) => s + (x.totalAmount || 0), 0));
-    const profit = round2(todaySales.reduce((s, x) => s + (x.totalProfit || 0), 0));
+    const todayAdjustments = sumAdjustmentsSince(adjustmentRows, todayStart);
+    const sales = round2(todaySales.reduce((s, x) => s + (x.totalAmount || 0), 0) + todayAdjustments.salesAdjustment);
+    const profit = round2(todaySales.reduce((s, x) => s + (x.totalProfit || 0), 0) + todayAdjustments.profitAdjustment);
     const purchase = round2(todayPurchases.reduce((s, x) => s + (x.totalAmount || 0), 0));
     const customers = new Set(todaySales.map((s) => s.customerId?.toString()).filter(Boolean)).size;
 
@@ -494,7 +517,7 @@ const getTodayKpis = async (saleBranchMatch, purchaseBranchMatch) => {
 // sellingPrice - purchasePrice
 // ============================================================
 
-const getProfitSummary = async (saleBranchMatch) => {
+const getProfitSummary = async (saleBranchMatch, adjustmentRows = []) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -512,16 +535,16 @@ const getProfitSummary = async (saleBranchMatch) => {
         },
     ]);
 
-    const pick = (arr) => round2(arr?.[0]?.profit || 0);
+    const pick = (arr, adj) => round2((arr?.[0]?.profit || 0) + adj.profitAdjustment);
     return {
-        today: pick(result.today),
-        thisMonth: pick(result.thisMonth),
-        thisYear: pick(result.thisYear),
-        overall: pick(result.overall),
+        today: pick(result.today, sumAdjustmentsSince(adjustmentRows, todayStart)),
+        thisMonth: pick(result.thisMonth, sumAdjustmentsSince(adjustmentRows, monthStart)),
+        thisYear: pick(result.thisYear, sumAdjustmentsSince(adjustmentRows, yearStart)),
+        overall: pick(result.overall, sumAdjustmentsSince(adjustmentRows, null)),
     };
 };
 
-const getProfitTrend = async (saleBranchMatch) => {
+const getProfitTrend = async (saleBranchMatch, adjustmentRows = []) => {
     const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
     const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
 
@@ -542,17 +565,48 @@ const getProfitTrend = async (saleBranchMatch) => {
         },
     ]);
 
-    return {
-        daily: (result.daily || []).map((d) => ({ date: d._id, profit: round2(d.profit) })),
-        monthly: (result.monthly || []).map((m) => ({ month: m._id, profit: round2(m.profit) })),
-    };
+    // Day-bucketed adjustments (see getReturnExchangeAdjustments.js)
+    // folded in by matching key - dailyBuckets' keys are already
+    // "YYYY-MM-DD"; monthly re-groups the same buckets by their first 7
+    // characters ("YYYY-MM") rather than re-querying.
+    const dailyAdjBuckets = bucketAdjustmentRowsByDay(adjustmentRows.filter((r) => new Date(r.date) >= monthAgo));
+    const dailyAdjByKey = new Map(dailyAdjBuckets.map((b) => [b.date, b.profitAdjustment]));
+
+    const monthlyAdjBuckets = bucketAdjustmentRowsByDay(adjustmentRows.filter((r) => new Date(r.date) >= yearAgo));
+    const monthlyAdjByKey = new Map();
+    for (const b of monthlyAdjBuckets) {
+        const monthKey = b.date.slice(0, 7);
+        monthlyAdjByKey.set(monthKey, (monthlyAdjByKey.get(monthKey) || 0) + b.profitAdjustment);
+    }
+
+    const daily = (result.daily || []).map((d) => ({ date: d._id, profit: round2(d.profit) }));
+    const monthly = (result.monthly || []).map((m) => ({ month: m._id, profit: round2(m.profit) }));
+
+    // Days/months with a Return/Exchange but zero Sale activity of
+    // their own (e.g. every item in that day's sales was later returned
+    // on a different day) still need their own bucket, not just a
+    // silent addition to an existing one.
+    for (const [date, profitAdjustment] of dailyAdjByKey) {
+        const existing = daily.find((d) => d.date === date);
+        if (existing) existing.profit = round2(existing.profit + profitAdjustment);
+        else daily.push({ date, profit: round2(profitAdjustment) });
+    }
+    for (const [month, profitAdjustment] of monthlyAdjByKey) {
+        const existing = monthly.find((m) => m.month === month);
+        if (existing) existing.profit = round2(existing.profit + profitAdjustment);
+        else monthly.push({ month, profit: round2(profitAdjustment) });
+    }
+    daily.sort((a, b) => a.date.localeCompare(b.date));
+    monthly.sort((a, b) => a.month.localeCompare(b.month));
+
+    return { daily, monthly };
 };
 
 // ============================================================
 // 📈 REVENUE TREND - Sales vs Purchase, own trendRange filter
 // ============================================================
 
-const getRevenueTrend = async (saleBranchMatch, purchaseBranchMatch, trendRange) => {
+const getRevenueTrend = async (saleBranchMatch, purchaseBranchMatch, trendRange, adjustmentRows = []) => {
     const { start, granularity } = getTrendStart(trendRange);
     const keyFn = keyFnFor(granularity);
 
@@ -573,6 +627,13 @@ const getRevenueTrend = async (saleBranchMatch, purchaseBranchMatch, trendRange)
         const key = keyFn(p.purchaseDate);
         if (!buckets.has(key)) buckets.set(key, { sales: 0, purchase: 0 });
         buckets.get(key).purchase += p.totalAmount || 0;
+    }
+    // Re-keyed to this trend's own granularity, same as getProfitLoss.controller.js's getTrend.
+    for (const r of adjustmentRows) {
+        if (new Date(r.date) < start) continue;
+        const key = keyFn(r.date);
+        if (!buckets.has(key)) buckets.set(key, { sales: 0, purchase: 0 });
+        buckets.get(key).sales += r.salesAdjustment;
     }
 
     const points = [...buckets.entries()]
