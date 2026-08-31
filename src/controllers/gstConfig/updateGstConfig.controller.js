@@ -29,7 +29,6 @@ export const SUPPORTED_CURRENCIES = [
 export const updateGstConfigController = async (req, res) => {
     try {
         const {
-            invoiceSettings,
             availableGstRates,
             marginSchemeRate,
             standardRate,
@@ -96,12 +95,6 @@ export const updateGstConfigController = async (req, res) => {
 
         const config = await getOrCreateGstConfig();
 
-        if (invoiceSettings !== undefined) {
-            config.invoiceSettings = {
-                footerNote: invoiceSettings.footerNote?.trim() || "",
-                termsAndConditions: invoiceSettings.termsAndConditions?.trim() || "",
-            };
-        }
         if (availableGstRates !== undefined) {
             config.availableGstRates = availableGstRates.map((r) => Number(r) || 0);
         }

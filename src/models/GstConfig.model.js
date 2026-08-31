@@ -21,16 +21,6 @@ import mongoose from "mongoose";
 const gstConfigSchema = new mongoose.Schema(
   {
     // =========================
-    // INVOICE TEXT
-    // =========================
-    // Company identity (name/address/GSTIN) is deliberately not stored
-    // here - not needed by this app.
-    invoiceSettings: {
-      footerNote: { type: String, default: "", trim: true },
-      termsAndConditions: { type: String, default: "", trim: true },
-    },
-
-    // =========================
     // GLOBAL APPLICATION SETTINGS
     // (currency / document prefixes / stock thresholds / invoice color)
     // =========================
