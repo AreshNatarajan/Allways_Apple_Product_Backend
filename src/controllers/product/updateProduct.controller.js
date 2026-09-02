@@ -6,6 +6,7 @@ import ProductSerial from "../../models/ProductSerial.modal.js";
 import Inventory from "../../models/Inventory.modal.js";
 import { deriveIsSerialized } from "../../utils/deriveProductType.js";
 import { buildLaptopProductName, validateLaptopNameParts } from "../../utils/buildLaptopProductName.js";
+import { buildMobileProductName, validateMobileNameParts } from "../../utils/buildMobileProductName.js";
 
 import {
     successResponse,
@@ -55,6 +56,7 @@ export const updateProductController = async (req, res) => {
         const nextCategory = category !== undefined ? category : product.category;
         const nextIsSerialized = deriveIsSerialized(nextCategory);
         const isLaptopNext = nextCategory === "LAPTOP";
+        const isMobileNext = nextCategory === "MOBILE";
 
         // ✅ If serialization type is actually changing, refuse the
         // change when any downstream Batch/BatchStock/ProductSerial/
@@ -140,8 +142,8 @@ export const updateProductController = async (req, res) => {
             }
         }
 
-        // ✅ LAPTOP - structured name correction, opt-in only. A raw
-        // client-sent `name` is ignored entirely for LAPTOP (same
+        // ✅ LAPTOP/MOBILE - structured name correction, opt-in only. A
+        // raw client-sent `name` is ignored entirely for either (same
         // trust-boundary reasoning as create) - `name` is only ever
         // settable through nameParts. If nameParts wasn't sent at all
         // (the admin didn't touch the structured fields - e.g. only
@@ -150,7 +152,7 @@ export const updateProductController = async (req, res) => {
         // literal "do not automatically overwrite or destroy the
         // existing value" requirement for legacy/free-text names.
         let generatedName = null;
-        const hasNameParts = nameParts && (nameParts.productName || nameParts.series || nameParts.screenSizes);
+        const hasNameParts = nameParts && (nameParts.productName || nameParts.series || nameParts.screenSizes || nameParts.number);
         if (isLaptopNext && hasNameParts) {
             const nextModelNumberForName = modelNumber !== undefined ? modelNumber : product.modelNumber;
             const validationError = validateLaptopNameParts({ ...nameParts, modelNumber: nextModelNumberForName });
@@ -169,6 +171,24 @@ export const updateProductController = async (req, res) => {
             if (existingLaptop) {
                 return errorResponse(res, `A product named "${generatedName}" already exists`, 409);
             }
+        } else if (isMobileNext && hasNameParts) {
+            const nextModelNumberForName = modelNumber !== undefined ? modelNumber : product.modelNumber;
+            const validationError = validateMobileNameParts({ ...nameParts, modelNumber: nextModelNumberForName });
+            if (validationError) {
+                return errorResponse(res, validationError, 400);
+            }
+
+            generatedName = buildMobileProductName({ ...nameParts, modelNumber: nextModelNumberForName });
+
+            const existingMobile = await Product.findOne({
+                _id: { $ne: id },
+                name: generatedName,
+                category: "MOBILE",
+                isDeleted: false,
+            });
+            if (existingMobile) {
+                return errorResponse(res, `A product named "${generatedName}" already exists`, 409);
+            }
         }
 
         // ✅ Apply updates
@@ -179,6 +199,16 @@ export const updateProductController = async (req, res) => {
                     productName: nameParts.productName,
                     series: nameParts.series,
                     screenSizes: nameParts.screenSizes,
+                };
+            }
+            // else: nameParts wasn't sent - name/nameParts stay exactly as they are.
+        } else if (isMobileNext) {
+            if (generatedName) {
+                product.name = generatedName;
+                product.nameParts = {
+                    productName: nameParts.productName,
+                    number: nameParts.number,
+                    series: nameParts.series,
                 };
             }
             // else: nameParts wasn't sent - name/nameParts stay exactly as they are.

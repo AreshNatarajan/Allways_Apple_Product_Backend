@@ -147,16 +147,19 @@ const productSchema = new mongoose.Schema(
     },
 
     // =========================
-    // STRUCTURED NAME (LAPTOP CATEGORY ONLY, FOR NOW)
+    // STRUCTURED NAME (LAPTOP and MOBILE CATEGORIES, FOR NOW)
     // =========================
-    // Source data behind the auto-generated `name` for a LAPTOP product -
-    // see utils/buildLaptopProductName.js for the exact format. Absent/
-    // undefined for every other category, and for any LAPTOP product
-    // that predates this feature (never backfilled - see
-    // updateProduct.controller.js: `name` is only ever regenerated when
-    // the admin deliberately fills these in on an edit). modelNumber is
-    // deliberately NOT duplicated in here - the existing top-level field
-    // above is reused as-is.
+    // Source data behind the auto-generated `name` for a LAPTOP product
+    // (see utils/buildLaptopProductName.js) or a MOBILE product (see
+    // utils/buildMobileProductName.js) - the two categories share this
+    // same sub-object, each reading only the fields its own format
+    // needs (LAPTOP: productName/series/screenSizes; MOBILE: productName/
+    // number/series). Absent/undefined for every other category, and for
+    // any LAPTOP/MOBILE product that predates this feature (never
+    // backfilled - see updateProduct.controller.js: `name` is only ever
+    // regenerated when the admin deliberately fills these in on an
+    // edit). modelNumber is deliberately NOT duplicated in here - the
+    // existing top-level field above is reused as-is by both formats.
     nameParts: {
       productName: {
         type: String,
@@ -175,6 +178,15 @@ const productSchema = new mongoose.Schema(
       screenSizes: {
         type: [Number],
         default: undefined,
+      },
+      // MOBILE only - the generation/line number (e.g. "16", "15") that
+      // sits between productName and series in the generated name.
+      number: {
+        type: String,
+        trim: true,
+        set: function (value) {
+          return typeof value === "string" ? value.trim().toUpperCase() : value;
+        },
       },
     },
 
