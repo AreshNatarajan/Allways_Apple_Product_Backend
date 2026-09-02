@@ -679,14 +679,12 @@ export const updatePurchaseController = async (req, res) => {
 
         // ============================================================
         // EOD REVIEW RESET - every edit re-opens review, since review
-        // must always reflect the latest edited state. A SUPER_ADMIN's
-        // own edit needs no review (they are the reviewing authority).
+        // must always reflect the latest edited state - regardless of
+        // editor role, including SUPER_ADMIN's own edit (matches the
+        // same "no one's own record is auto-approved" rule already
+        // applied at creation time in createPurchase.controller.js).
         // ============================================================
-        if (user.role !== "SUPER_ADMIN") {
-            purchase.processStatus = "PENDING_REVIEW";
-        } else {
-            purchase.processStatus = null;
-        }
+        purchase.processStatus = "PENDING_REVIEW";
         purchase.reviewedBy = null;
         purchase.reviewedAt = null;
 

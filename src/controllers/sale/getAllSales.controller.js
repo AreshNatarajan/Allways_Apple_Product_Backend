@@ -127,9 +127,10 @@ export const getAllSalesController = async (req, res) => {
         if (customerId && customerId !== "ALL" && mongoose.Types.ObjectId.isValid(customerId)) {
             filter.customerId = customerId;
         }
-        // processStatus only ever exists on a non-SUPER_ADMIN-created
-        // sale (see Sale.modal.js) - filtering by it implicitly excludes
-        // every SUPER_ADMIN sale, no separate condition needed.
+        // Every newly created sale now starts as PENDING_REVIEW
+        // regardless of creator role (see createSale.controller.js) -
+        // this is a plain match, no separate creator/role condition
+        // needed for a SUPER_ADMIN-created sale to show up here too.
         if (processStatus && processStatus !== "ALL" && PROCESS_STATUS_VALUES.includes(processStatus)) {
             filter.processStatus = processStatus;
         }

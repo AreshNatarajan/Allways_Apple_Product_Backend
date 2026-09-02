@@ -85,7 +85,11 @@ export const createSaleController = async (req, res) => {
         const isBranchFlow = user?.role !== "SUPER_ADMIN";
         let handledBySnapshot = null;
         let selfieSnapshot = null;
-        let processStatus = null;
+        // Every newly created sale starts pending review, regardless of
+        // creator role (including SUPER_ADMIN - no one's own sale is
+        // auto-approved on creation anymore). Only reviewSaleController
+        // transitions this to APPROVED/REJECTED.
+        let processStatus = "PENDING_REVIEW";
 
         if (isBranchFlow) {
             if (!handledByUserId) {
@@ -128,10 +132,6 @@ export const createSaleController = async (req, res) => {
                 url: selfie.url,
                 uploadedAt: new Date(),
             };
-        }
-
-        if (isBranchFlow) {
-            processStatus = "PENDING_REVIEW";
         }
 
         // ============================================================
