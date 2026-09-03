@@ -837,7 +837,15 @@ const getLowStockLegacyShape = async (branchObjectId, thresholds) => {
 const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilter) => {
     const saleMatch = { status: "COMPLETED", isDeleted: false, ...saleBranchMatch };
     if (dateFilter) saleMatch.saleDate = dateFilter;
-    const purchaseMatch = { status: "COMPLETED", isDeleted: false, ...purchaseBranchMatch };
+    // Excludes Type 2 Exchange trade-in receipts (Purchase.source
+    // "CUSTOMER_EXCHANGE") from every purchase-based widget this feeds
+    // (Best Vendors in particular) - same reasoning as
+    // getBranchComparison's identical filter: a trade-in isn't a real
+    // vendor relationship, and every trade-in purchase shares the one
+    // system vendor, so ranking/grouping them in here would be
+    // meaningless at best. $ne also correctly matches pre-existing
+    // purchases with no stored source field at all.
+    const purchaseMatch = { status: "COMPLETED", isDeleted: false, source: { $ne: "CUSTOMER_EXCHANGE" }, ...purchaseBranchMatch };
     if (dateFilter) purchaseMatch.purchaseDate = dateFilter;
 
     const [sales, purchases] = await Promise.all([
@@ -960,7 +968,12 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
 const getBranchComparison = async (dateFilter) => {
     const saleMatch = { status: "COMPLETED", isDeleted: false };
     if (dateFilter) saleMatch.saleDate = dateFilter;
-    const purchaseMatch = { status: "COMPLETED", isDeleted: false };
+    // Excludes Type 2 Exchange trade-in receipts (Purchase.source
+    // "CUSTOMER_EXCHANGE") - that value is a deduction credited against
+    // a Sale, not real vendor spend, and would otherwise silently
+    // inflate this branch-cost metric. $ne also correctly matches
+    // pre-existing purchases with no stored source field at all.
+    const purchaseMatch = { status: "COMPLETED", isDeleted: false, source: { $ne: "CUSTOMER_EXCHANGE" } };
     if (dateFilter) purchaseMatch.purchaseDate = dateFilter;
 
     const [sales, purchases, branches, serials, batchStocks] = await Promise.all([
@@ -1038,7 +1051,11 @@ const getRecentPurchases = async (purchaseBranchMatch) => {
     return purchases.map((p) => ({
         _id: p._id,
         purchaseNumber: p.purchaseNumber,
-        vendor: p.vendorId?.name || p.vendorSnapshot?.name || "-",
+        // Snapshot-first (see getSerializedInventory.controller.js's
+        // matching fix) - an individual recent-purchase row should show
+        // who it was actually from, including a Type 2 Exchange
+        // trade-in's customer name, not the live Vendor document.
+        vendor: p.vendorSnapshot?.name || p.vendorId?.name || "-",
         amount: round2(p.totalAmount || 0),
         status: p.status,
         purchaseDate: p.purchaseDate,

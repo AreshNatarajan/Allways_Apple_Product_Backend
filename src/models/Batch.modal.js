@@ -31,6 +31,16 @@ const batchSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Copied from Purchase.source at creation - lets this batch's own
+    // record (not just its Purchase ancestor) identify whether it came
+    // from a real vendor or a Type 2 Exchange customer trade-in. See
+    // Purchase.modal.js's own comment for the full rationale.
+    source: {
+      type: String,
+      enum: ["VENDOR_PURCHASE", "CUSTOMER_EXCHANGE"],
+      default: "VENDOR_PURCHASE",
+    },
+
     purchasePrice: {
       type: Number,
       required: true,

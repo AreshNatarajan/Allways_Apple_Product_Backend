@@ -360,6 +360,16 @@ export const commitItemInventory = async ({
 }) => {
     const { serialRecordsToCreate, batchDataToCreate, centralBatchGroupsByProduct } = phase1;
 
+    // Copied onto every Batch/BatchStock/ProductSerial this call creates,
+    // and used to pick the matching StockMovement type below - every
+    // existing caller (createPurchase/updatePurchase/bulkReceive/
+    // receiveTransfer) never sets purchase.source, so this is always
+    // "VENDOR_PURCHASE" for them, identical to before this field existed.
+    // Only tradeInProcessor.service.js ever passes a purchase with
+    // source: "CUSTOMER_EXCHANGE".
+    const stockSource = purchase.source || "VENDOR_PURCHASE";
+    const receiveMovementType = stockSource === "CUSTOMER_EXCHANGE" ? "CUSTOMER_EXCHANGE_RECEIVE" : "PURCHASE_RECEIVE_DIRECT";
+
     // ---- Direct-receive batches (BRANCH_ADMIN/STAFF) ----
     const createdBatches = [];
     if (isDirectReceive && batchDataToCreate.length > 0) {
@@ -372,6 +382,7 @@ export const commitItemInventory = async ({
                 branchId: batchData.branchId,
                 productId: batchData.productId,
                 purchaseId: purchase._id,
+                source: stockSource,
                 purchasePrice: batchData.purchasePrice,
                 sellingPrice: batchData.sellingPrice,
                 quantity: batchData.quantity,
@@ -392,6 +403,7 @@ export const commitItemInventory = async ({
                 barcode,
                 productCode: batchData.productCode,
                 purchaseId: purchase._id,
+                source: stockSource,
                 quantity: batchData.quantity,
                 availableQuantity: batchData.quantity,
                 purchasePrice: batchData.purchasePrice,
@@ -405,7 +417,7 @@ export const commitItemInventory = async ({
             await batchStock.save({ session });
 
             await recordStockMovement({
-                type: "PURCHASE_RECEIVE_DIRECT",
+                type: receiveMovementType,
                 productId: batchData.productId,
                 branchId: batchData.branchId,
                 batchId: batch._id,
@@ -537,6 +549,7 @@ export const commitItemInventory = async ({
             doc: new ProductSerial({
                 productId: serialData.productId,
                 purchaseId: purchase._id,
+                source: stockSource,
                 serialNumber: serialData.serialNumber,
                 purchasePrice: serialData.purchasePrice,
                 sellingPrice: serialData.sellingPrice,
@@ -563,7 +576,7 @@ export const commitItemInventory = async ({
             const { serialData } = createdSerialRecords[i];
             if (inserted.status === "AVAILABLE") {
                 await recordStockMovement({
-                    type: "PURCHASE_RECEIVE_DIRECT",
+                    type: receiveMovementType,
                     productId: inserted.productId,
                     branchId: inserted.currentBranchId,
                     serialId: inserted._id,

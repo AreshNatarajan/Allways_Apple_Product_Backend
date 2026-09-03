@@ -192,6 +192,21 @@ const purchaseSchema = new mongoose.Schema(
       enum: ["CENTRAL", "BRANCH"],
       default: null,
     },
+    // Distinguishes a real vendor purchase from stock received via a
+    // Type 2 Exchange trade-in (see services/sale/tradeInProcessor.service.js)
+    // - both use the exact same items/inventory-creation machinery, but
+    // this is the explicit, queryable marker that keeps a trade-in from
+    // being indistinguishable from real vendor spend in reports/
+    // dashboards (see getDashboard.controller.js's getBranchComparison).
+    // Every purchase created before this field existed, and every real
+    // vendor purchase going forward, defaults to VENDOR_PURCHASE with
+    // zero behavior change - only tradeInProcessor.service.js ever sets
+    // CUSTOMER_EXCHANGE.
+    source: {
+      type: String,
+      enum: ["VENDOR_PURCHASE", "CUSTOMER_EXCHANGE"],
+      default: "VENDOR_PURCHASE",
+    },
     reference: {
       type: String,
       default: "",
@@ -327,6 +342,7 @@ const purchaseSchema = new mongoose.Schema(
 purchaseSchema.index({ isDeleted: 1, purchaseDate: -1 });
 purchaseSchema.index({ isDeleted: 1, branchId: 1 });
 purchaseSchema.index({ isDeleted: 1, poType: 1 });
+purchaseSchema.index({ isDeleted: 1, source: 1 });
 purchaseSchema.index({ isDeleted: 1, paymentStatus: 1 });
 purchaseSchema.index({ isDeleted: 1, status: 1 });
 purchaseSchema.index({ isDeleted: 1, vendorId: 1 });
@@ -375,6 +391,9 @@ purchaseSchema.index({ isDeleted: 1, processStatus: 1 });
 const PURCHASE_FROZEN_FIELDS = [
   "branchId",
   "poType",
+  // Same reasoning as poType - an edit must never silently redirect
+  // where this purchase's stock is understood to have come from.
+  "source",
 ];
 
 // Captures the persisted status at load time, before any in-memory

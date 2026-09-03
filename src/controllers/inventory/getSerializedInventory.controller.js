@@ -135,7 +135,15 @@ export const getSerializedInventoryController = async (req, res) => {
                 modelNumber: item.productId?.modelNumber || "",
                 serialNumber: item.serialNumber,
                 vendorId: item.purchaseId?.vendorId?._id || null,
-                vendorName: item.purchaseId?.vendorId?.name || item.purchaseId?.vendorSnapshot?.name || "-",
+                // Snapshot-first (matches PurchaseRow.jsx/VendorDetailsCard.jsx's
+                // own explicit convention) - a purchase's vendor display
+                // must reflect who it was actually from at that time, not
+                // silently follow a later edit to the live Vendor
+                // document. This also makes Type 2 Exchange trade-in
+                // stock correctly show the customer's name (stamped into
+                // vendorSnapshot.name, see tradeInProcessor.service.js)
+                // instead of the shared system vendor's own generic name.
+                vendorName: item.purchaseId?.vendorSnapshot?.name || item.purchaseId?.vendorId?.name || "-",
                 sellingPrice: item.sellingPrice || 0,
                 gstApplicable: !!item.gstApplicable,
                 status: item.status,

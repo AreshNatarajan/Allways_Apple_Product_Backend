@@ -101,7 +101,12 @@ export const getSerializedItemDetailController = async (req, res) => {
             });
         }
 
-        const vendor = item.purchaseId?.vendorId || item.purchaseId?.vendorSnapshot || null;
+        // Snapshot-first (matches PurchaseRow.jsx/VendorDetailsCard.jsx's
+        // own explicit convention, and getSerializedInventory.controller.js's
+        // matching fix) - reflects who this was actually from at purchase
+        // time, including a Type 2 Exchange trade-in's customer name
+        // (see tradeInProcessor.service.js), never a later live-Vendor edit.
+        const vendor = item.purchaseId?.vendorSnapshot || item.purchaseId?.vendorId || null;
         const canViewCost = canViewInventoryCost(user.role);
 
         const purchaseDetails = {

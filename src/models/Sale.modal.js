@@ -509,6 +509,74 @@ const salesSchema = new mongoose.Schema(
     },
 
     // ----------------------------------------------------------
+    // TYPE 2 EXCHANGE (TRADE-IN) - customer gives us one or more old
+    // products (never ones of ours, no prior history here) as part-
+    // payment against this sale. Dynamic/Purchase-Entry-like: any
+    // number of serialized and/or non-serialized items, each received
+    // into real inventory via services/sale/tradeInProcessor.service.js
+    // (which reuses purchaseItemProcessor.service.js's own item-
+    // processing/inventory-creation code - see that file's own
+    // comments). Deliberately NOT the same thing as Type 1 Exchange
+    // (see SaleExchange.modal.js, a separate top-level collection for
+    // swapping an already-sold unit of ours) or a Sale Return - neither
+    // of those reads or writes these fields.
+    //
+    // totalAmount above always stays the raw, un-adjusted gross sale
+    // value (P&L/GST reporting integrity, and so the original amount
+    // is never lost) - netPayableAmount is the figure paidAmount/
+    // pendingAmount/paymentStatus are actually computed against
+    // whenever tradeInEnabled is true (see createSale.controller.js).
+    tradeInEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    // One entry per exchange item, each with its own agreed
+    // purchasePrice (the acquisition/exchange value that becomes that
+    // item's real ProductSerial/BatchStock.purchasePrice - its future
+    // COGS basis) - productSerialId/batchStockId point at the actual
+    // created inventory record.
+    tradeInItems: {
+      type: [
+        {
+          productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+          productName: { type: String, default: "" },
+          isSerialized: { type: Boolean, default: false },
+          serialNumber: { type: String, default: "" },
+          quantity: { type: Number, default: 1 },
+          purchasePrice: { type: Number, default: 0, min: 0 },
+          sellingPrice: { type: Number, default: 0, min: 0 },
+          productSerialId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductSerial", default: null },
+          batchStockId: { type: mongoose.Schema.Types.ObjectId, ref: "BatchStock", default: null },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
+    // The one synthetic Purchase (source: "CUSTOMER_EXCHANGE") covering
+    // every tradeInItems entry above - see tradeInProcessor.service.js.
+    tradeInPurchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Purchase",
+      default: null,
+    },
+    // Sum of every tradeInItems entry's purchasePrice (x quantity for
+    // non-serialized) - kept denormalized for quick reference/reporting
+    // rather than re-summing tradeInItems every time it's needed.
+    tradeInTotalValue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // null when no trade-in - "0" would be indistinguishable from a
+    // genuinely free sale, so absence is modeled as null, not 0.
+    netPayableAmount: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    // ----------------------------------------------------------
     // ACCOUNTABILITY: HANDLED-BY / SELFIE / EOD APPROVAL
     // ----------------------------------------------------------
     // Sale-level "who physically handled this at the counter" -

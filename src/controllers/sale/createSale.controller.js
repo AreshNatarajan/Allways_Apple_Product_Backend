@@ -7,10 +7,12 @@ import Product from "../../models/Product.modal.js";
 import Purchase from "../../models/Purchase.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import User from "../../models/User.js";
+import Customer from "../../models/Customer.modal.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
 import { generateSaleInvoicePdf } from "../../services/sale/generateSaleInvoicePdf.js";
+import { processTradeIn } from "../../services/sale/tradeInProcessor.service.js";
 import {
     successResponse,
     errorResponse,
@@ -42,6 +44,13 @@ export const createSaleController = async (req, res) => {
             // SUPER_ADMIN (see §2.5 below), optional for SUPER_ADMIN.
             handledByUserId = null,
             selfie = null,
+            // Type 2 Exchange (trade-in) - optional, dynamic (any number
+            // of serialized/non-serialized items, Purchase-Entry-like -
+            // see tradeInProcessor.service.js). Never confused with Sale
+            // Return or Type 1 Exchange (SaleExchange collection),
+            // neither of which this payload shape touches.
+            tradeInEnabled = false,
+            tradeInItems = [],
         } = req.body;
 
         // ============================================================
@@ -561,22 +570,63 @@ export const createSaleController = async (req, res) => {
         }
 
         // ============================================================
-        // 5. PAYMENT LOGIC
+        // 4.5 TYPE 2 EXCHANGE (TRADE-IN) - optional, dynamic (any number
+        // of items). totalExchangeValue is Σ purchasePrice (serialized)
+        // + Σ purchasePrice×quantity (non-serialized) - deliberately
+        // excluding any GST the user sets on a trade-in row, since that's
+        // an input-tax-credit concern for our side, not part of what's
+        // deducted from the customer's payment. Validated against the
+        // gross total computed above; the resulting net figure is what
+        // payment is actually checked/derived against below.
+        // totalAmount stored on the sale always stays the raw gross
+        // value - see tradeInProcessor.service.js / Sale.modal.js.
         // ============================================================
-        
-        const paidAmount = validatedPaymentDetails.reduce((sum, p) => sum + p.amount, 0);
 
-        if (paidAmount > calculatedTotalAmount) {
-            const sym = gstConfig.currency?.symbol || "₹";
-            return rollback(`Paid amount (${sym}${paidAmount}) exceeds total amount (${sym}${calculatedTotalAmount})`);
+        let totalExchangeValue = 0;
+        if (tradeInEnabled) {
+            if (!Array.isArray(tradeInItems) || tradeInItems.length === 0) {
+                return rollback("At least one exchange item is required");
+            }
+            totalExchangeValue = round2(
+                tradeInItems.reduce((sum, it) => {
+                    const qty = it.isSerialized ? 1 : (Number(it.quantity) || 0);
+                    return sum + (Number(it.purchasePrice) || 0) * qty;
+                }, 0)
+            );
+            if (totalExchangeValue <= 0) {
+                return rollback("Exchange value must be greater than 0");
+            }
+            if (totalExchangeValue > calculatedTotalAmount) {
+                return rollback("Exchange value cannot be greater than the sale amount");
+            }
         }
 
-        const pendingAmount = calculatedTotalAmount - paidAmount;
+        // ============================================================
+        // 5. PAYMENT LOGIC
+        // ============================================================
+
+        const paidAmount = validatedPaymentDetails.reduce((sum, p) => sum + p.amount, 0);
+
+        // payableAmount is the gross total minus any trade-in deduction
+        // - every downstream payment check/derivation in this section
+        // uses it instead of calculatedTotalAmount whenever a trade-in
+        // is active, leaving the per-item math above and the stored
+        // gross totalAmount below completely untouched.
+        const payableAmount = tradeInEnabled
+            ? round2(calculatedTotalAmount - totalExchangeValue)
+            : calculatedTotalAmount;
+
+        if (paidAmount > payableAmount) {
+            const sym = gstConfig.currency?.symbol || "₹";
+            return rollback(`Paid amount (${sym}${paidAmount}) exceeds payable amount (${sym}${payableAmount})`);
+        }
+
+        const pendingAmount = payableAmount - paidAmount;
         let paymentStatus = "UNPAID";
 
-        if (paidAmount === calculatedTotalAmount && calculatedTotalAmount > 0) {
+        if (paidAmount === payableAmount && payableAmount > 0) {
             paymentStatus = "PAID";
-        } else if (paidAmount > 0 && paidAmount < calculatedTotalAmount) {
+        } else if (paidAmount > 0 && paidAmount < payableAmount) {
             paymentStatus = "PARTIAL";
         }
 
@@ -586,6 +636,26 @@ export const createSaleController = async (req, res) => {
         // ============================================================
 
         const saleNumber = await generateDocumentNumber("sale", gstConfig.documentPrefixes.sale, { session });
+
+        // Trade-in processing needs saleNumber (recorded on the
+        // receiving Purchase's notes) and runs inside this same
+        // transaction - any failure here rolls back the sale too.
+        let tradeInItemsEmbed = [];
+        let tradeInPurchaseId = null;
+        if (tradeInEnabled) {
+            // Resolved fresh here (never trusted from the client) purely
+            // so the receiving Purchase's vendorSnapshot.name can show
+            // who actually gave us this item, instead of the shared
+            // system vendor's own generic name - see
+            // tradeInProcessor.service.js for where this is used.
+            const customer = await Customer.findById(customerId).session(session);
+            const result = await processTradeIn({ tradeInItems, branchId, saleNumber, customerName: customer?.name || "", gstConfig, user, session });
+            if (result.error) {
+                return rollback(result.error);
+            }
+            tradeInItemsEmbed = result.tradeInItemsEmbed;
+            tradeInPurchaseId = result.purchaseId;
+        }
 
         // ============================================================
         // 7. CREATE SALE
@@ -605,6 +675,11 @@ export const createSaleController = async (req, res) => {
                 totalProfit: calculatedTotalProfit,
                 totalProfitAfterGst: calculatedTotalProfitAfterGst,
                 totalAmount: calculatedTotalAmount,
+                tradeInEnabled,
+                tradeInItems: tradeInItemsEmbed,
+                tradeInPurchaseId,
+                tradeInTotalValue: totalExchangeValue,
+                netPayableAmount: tradeInEnabled ? payableAmount : null,
                 paymentDetails: validatedPaymentDetails,
                 paidAmount: paidAmount,
                 pendingAmount: pendingAmount,

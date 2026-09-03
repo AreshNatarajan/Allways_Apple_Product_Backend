@@ -22,6 +22,7 @@ const stockMovementSchema = new mongoose.Schema(
       enum: [
         "PURCHASE_RECEIVE_DIRECT",   // BRANCH_ADMIN direct purchase
         "PURCHASE_RECEIVE_CENTRAL",  // SUPER_ADMIN purchase, received at branch
+        "CUSTOMER_EXCHANGE_RECEIVE", // Type 2 Exchange - customer trade-in received into stock
         "TRANSFER_OUT",
         "TRANSFER_IN",
         "SALE",

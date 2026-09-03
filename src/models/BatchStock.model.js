@@ -73,6 +73,14 @@ const batchStockSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Copied from Purchase.source at creation - see Batch.modal.js's
+    // identical field for the full rationale.
+    source: {
+      type: String,
+      enum: ["VENDOR_PURCHASE", "CUSTOMER_EXCHANGE"],
+      default: "VENDOR_PURCHASE",
+    },
+
     // ============================================================
     // QUANTITY
     // ============================================================

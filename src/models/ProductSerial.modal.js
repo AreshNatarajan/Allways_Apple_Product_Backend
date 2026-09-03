@@ -13,6 +13,16 @@ const productSerialSchema = new mongoose.Schema(
       ref: "Purchase",
       required: true,
     },
+
+    // Copied from Purchase.source at creation - see Purchase.modal.js's
+    // comment for the full rationale. Lets this physical unit's own
+    // record identify whether it came from a real vendor purchase or a
+    // Type 2 Exchange customer trade-in, not just its Purchase ancestor.
+    source: {
+      type: String,
+      enum: ["VENDOR_PURCHASE", "CUSTOMER_EXCHANGE"],
+      default: "VENDOR_PURCHASE",
+    },
     serialNumber: {
       type: String,
       required: true,
