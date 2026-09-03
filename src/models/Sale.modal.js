@@ -508,6 +508,18 @@ const salesSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Running total credited off pendingAmount by post-sale trade-ins
+    // (see SaleTradeIn.modal.js/createSaleTradeIn.controller.js) - kept
+    // for display/audit only, pendingAmount itself is what's actually
+    // decremented. Deliberately separate from tradeInTotalValue below,
+    // which is create-time-only and already folded into
+    // netPayableAmount instead.
+    tradeInCreditApplied: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // ----------------------------------------------------------
     // TYPE 2 EXCHANGE (TRADE-IN) - customer gives us one or more old
     // products (never ones of ours, no prior history here) as part-

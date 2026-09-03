@@ -18,6 +18,8 @@ import { getSaleReturnsController } from '../../controllers/sale/getSaleReturns.
 import { createSaleExchangeController } from '../../controllers/sale/createSaleExchange.controller.js';
 import { getSaleExchangesController } from '../../controllers/sale/getSaleExchanges.controller.js';
 import { getExchangeReplacementUnitController } from '../../controllers/sale/getExchangeReplacementUnit.controller.js';
+import { createSaleTradeInController } from '../../controllers/sale/createSaleTradeIn.controller.js';
+import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIns.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -89,6 +91,13 @@ router.get('/:id/returns', authMiddleware, getSaleReturnsController);
 router.get('/:id/exchange-scanner/:barcodeValue', authMiddleware, requirePermission('sale.exchange'), getExchangeReplacementUnitController);
 router.post('/:id/exchange', authMiddleware, requirePermission('sale.exchange'), createSaleExchangeController);
 router.get('/:id/exchanges', authMiddleware, getSaleExchangesController);
+
+// Post-Sale Type 2 Exchange (Trade-In) - same reasoning as Return/
+// Exchange above (no onlyBranchRoles, requirePermission('sale.tradeIn')
+// lets SUPER_ADMIN through unconditionally, no separate review route -
+// reviewSale.controller.js's cascade covers this too).
+router.post('/:id/trade-in', authMiddleware, requirePermission('sale.tradeIn'), createSaleTradeInController);
+router.get('/:id/trade-ins', authMiddleware, getSaleTradeInsController);
 
 // Add route for getting sale by ID
 router.get('/:id', authMiddleware, getSaleByIdController);
