@@ -18,6 +18,7 @@ import { statsPurchaseController } from '../../controllers/purchase/statsPurchas
 import { uploadPurchaseInvoiceController } from '../../controllers/purchase/uploadPurchaseInvoice.controller.js'
 
 import { checkSerialNumberController } from '../../controllers/purchase/checkSerialNumberExist.controller.js'
+import { getPurchaseItemBySerialController } from '../../controllers/purchase/getPurchaseItemBySerial.controller.js'
 
 
 
@@ -69,6 +70,11 @@ router.post(
 
 
 router.post('/check-serial', authMiddleware, checkSerialNumberController)
+
+// Purchase List page's serial-search lookup - two path segments, so
+// this never collides with GET /:id below regardless of registration
+// order (kept above it anyway for clarity, same convention as /stats).
+router.get('/serial/:serialNumber', authMiddleware, getPurchaseItemBySerialController)
 
 // 2. Define the routes
 router.get('/stats', authMiddleware, statsPurchaseController);

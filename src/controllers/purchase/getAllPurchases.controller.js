@@ -30,6 +30,12 @@ const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const isSerializedItem = (item) => Array.isArray(item.serialNumbers) && item.serialNumbers.length > 0;
 const itemQuantity = (item) => (isSerializedItem(item) ? item.serialNumbers.length : item.quantity || 0);
+// Sum of every item's own cost price (purchasePrice x quantity,
+// quantity always 1 for a serialized item) across the WHOLE purchase -
+// what the list row's "Purchase Price" column shows/sorts by, distinct
+// from totalAmount (the GST-inclusive invoice grand total).
+const totalPurchasePriceOf = (items) =>
+  (items || []).reduce((sum, item) => sum + (item.purchasePrice || 0) * (itemQuantity(item) || 1), 0);
 
 // A purchase line is still "waiting" if its PendingReceive item status is
 // PENDING or its ProductSerial status is ASSIGNED - anything else (including
@@ -315,7 +321,7 @@ export const getAllPurchasesController = async (req, res) => {
           case "qty":
             return itemQuantity(fi);
           case "purchasePrice":
-            return fi.purchasePrice || 0;
+            return totalPurchasePriceOf(p.items);
           case "totalAmount":
             return p.totalAmount || 0;
           case "paidAmount":
@@ -444,6 +450,13 @@ export const getAllPurchasesController = async (req, res) => {
       let serializedItemCount = 0, serializedQuantity = 0;
       let nonSerializedItemCount = 0, nonSerializedQuantity = 0;
       let totalGstAmount = 0;
+      // Sum of every item's own cost price (purchasePrice x quantity,
+      // quantity always 1 for a serialized item) across the WHOLE
+      // purchase - distinct from totalAmount (the GST-inclusive invoice
+      // grand total) and from a single item's own unit price. This is
+      // what the list row's "Purchase Price" column shows now, instead
+      // of just the first item's price.
+      let totalPurchasePrice = 0;
 
       for (const item of items) {
         const qty = itemQuantity(item);
@@ -455,6 +468,7 @@ export const getAllPurchasesController = async (req, res) => {
           nonSerializedQuantity += qty;
         }
         totalGstAmount += item.purchaseGstAmount || 0;
+        totalPurchasePrice += (item.purchasePrice || 0) * (qty || 1);
       }
 
       const daysSince = Math.ceil((new Date() - new Date(purchase.createdAt)) / (1000 * 60 * 60 * 24));
@@ -476,10 +490,6 @@ export const getAllPurchasesController = async (req, res) => {
         }
       }
       const moreItemsCount = Math.max(0, items.length - 1);
-      // The featured (first) item's own unit price - distinct from
-      // totalAmount below, which is the WHOLE purchase's grand total
-      // across every item/GST/round-off.
-      const itemPurchasePrice = firstItem?.purchasePrice ?? null;
 
       return {
         _id: purchase._id,
@@ -489,7 +499,7 @@ export const getAllPurchasesController = async (req, res) => {
         serialNumber,
         smallDescription,
         moreItemsCount,
-        itemPurchasePrice,
+        totalPurchasePrice,
         poType: purchase.poType,
         vendorId: purchase.vendorId ? {
           _id: purchase.vendorId._id,

@@ -133,6 +133,11 @@ export const getSerializedInventoryController = async (req, res) => {
                 productName: item.productId?.name || "Unknown Product",
                 category: item.productId?.category || "",
                 modelNumber: item.productId?.modelNumber || "",
+                // This physical unit's own Condition, entered at Purchase
+                // time (ProductSerial.description.main) - never the
+                // Product master's own description, which describes the
+                // model in general, not this specific unit.
+                smallDescription: item.description?.main || "",
                 serialNumber: item.serialNumber,
                 vendorId: item.purchaseId?.vendorId?._id || null,
                 // Snapshot-first (matches PurchaseRow.jsx/VendorDetailsCard.jsx's

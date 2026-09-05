@@ -20,6 +20,7 @@ import { getSaleExchangesController } from '../../controllers/sale/getSaleExchan
 import { getExchangeReplacementUnitController } from '../../controllers/sale/getExchangeReplacementUnit.controller.js';
 import { createSaleTradeInController } from '../../controllers/sale/createSaleTradeIn.controller.js';
 import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIns.controller.js';
+import { getSaleItemBySerialController } from '../../controllers/sale/getSaleItemBySerial.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -49,6 +50,11 @@ router.get('/available-products', authMiddleware, onlyBranchRoles, getAvailableP
 // Route for getting sales statistics
 
 router.get('/stats', authMiddleware, statsSaleController);
+
+// Sale List page's serial-search lookup - two path segments, so this
+// never collides with GET /:id below regardless of registration order
+// (same convention as purchase.router.js's own /serial/:serialNumber).
+router.get('/serial/:serialNumber', authMiddleware, getSaleItemBySerialController);
 
 // Add route for getting all sales
 router.get('/', authMiddleware, getAllSalesController);
