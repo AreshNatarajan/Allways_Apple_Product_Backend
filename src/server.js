@@ -25,6 +25,9 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
     "http://localhost:5173",
     "http://localhost:5174",
+    // shopping-commerce (customer storefront) dev server - fixed port,
+    // see shopping-commerce/vite.config.js.
+    "http://localhost:5180",
     // "https://shopping-frontend-c82v.onrender.com",
     "https://allways-apple-products-frontend.onrender.com"
 ];
@@ -74,6 +77,8 @@ import transferRouter from './routes/transfer/transfer.router.js'
 
 
 import userRouter from "./routes/users/user.router.js";
+import storefrontRouter from "./routes/storefront/storefront.router.js";
+import publicStorefrontRouter from "./routes/storefront/publicStorefront.router.js";
 
 app.use(
     "/uploads",
@@ -148,6 +153,11 @@ console.log('Branch routes imported successfully');
 app.use('/api/branch', branchRouter)
 console.log('Branch routes mounted at /api/branch');
 app.use('/api/reports', reportsRouter);
+app.use('/api/storefront', storefrontRouter);
+// PUBLIC - no authMiddleware, consumed by shopping-commerce. Kept as
+// its own top-level mount (not nested under /api/storefront) so the
+// "this whole prefix needs no login" boundary is obvious at a glance.
+app.use('/api/public/storefront', publicStorefrontRouter);
 
 const PORT = process.env.PORT || 5000;
 
