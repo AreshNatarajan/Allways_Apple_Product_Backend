@@ -655,9 +655,12 @@ const salesSchema = new mongoose.Schema(
     },
 
     // ----------------------------------------------------------
-    // SYSTEM INVOICE (auto-generated PDF, mirrors Purchase's
-    // systemInvoiceFile - a sale is never re-invoiced, only ever
-    // invoiced once; see generateSaleInvoicePdf.js for the guard)
+    // SYSTEM INVOICE - generated CLIENT-SIDE now (the frontend renders
+    // its own invoice template - src/utils/Template/Invoice.jsx - into a
+    // PDF and uploads it), not server-side like Purchase's own
+    // systemInvoiceFile still is. Set via PATCH /sale/:id/invoice (see
+    // setSaleInvoiceFile.controller.js) - a sale is never re-invoiced,
+    // only ever invoiced once; that endpoint enforces the same guard.
     // ----------------------------------------------------------
 
     systemInvoiceFile: {

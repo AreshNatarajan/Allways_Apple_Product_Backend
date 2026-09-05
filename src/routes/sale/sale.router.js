@@ -21,6 +21,8 @@ import { getExchangeReplacementUnitController } from '../../controllers/sale/get
 import { createSaleTradeInController } from '../../controllers/sale/createSaleTradeIn.controller.js';
 import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIns.controller.js';
 import { getSaleItemBySerialController } from '../../controllers/sale/getSaleItemBySerial.controller.js';
+import { uploadSaleInvoiceController } from '../../controllers/sale/uploadSaleInvoice.controller.js';
+import { setSaleInvoiceFileController } from '../../controllers/sale/setSaleInvoiceFile.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -65,6 +67,15 @@ router.get('/', authMiddleware, getAllSalesController);
 // for a sale they can no longer create either. Confirmed used only by
 // the live SaleCreate flow (SelfieCaptureModal.jsx), not shared.
 router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), uploadSaleSelfieController);
+
+// Client-generated system invoice (see uploadSaleInvoice.controller.js's
+// own doc comment) - same onlyBranchRoles + sale.create gate as the
+// creation flow it's always part of. Persisting the resulting URL is a
+// SEPARATE, narrower endpoint (setSaleInvoiceFileController below) so
+// setting one field never goes through updateSaleController's much
+// heavier edit-sale side effects.
+router.post('/upload-invoice', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), uploadSaleInvoiceController);
+router.patch('/:id/invoice', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), setSaleInvoiceFileController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.

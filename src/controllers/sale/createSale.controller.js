@@ -11,7 +11,6 @@ import Customer from "../../models/Customer.modal.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
-import { generateSaleInvoicePdf } from "../../services/sale/generateSaleInvoicePdf.js";
 import { processTradeIn } from "../../services/sale/tradeInProcessor.service.js";
 import {
     successResponse,
@@ -799,33 +798,16 @@ export const createSaleController = async (req, res) => {
         session.endSession();
 
         // ============================================================
-        // 9b. GENERATE SYSTEM INVOICE PDF + UPLOAD TO S3 (after the
-        // transaction commits - PDF/S3 failure must never fail or roll
-        // back the sale itself; the stock movement and financial record
-        // are what matter most. Only for a real, finalized sale - a
-        // DRAFT isn't an actual transaction yet, so it gets no invoice
-        // until it's completed.)
-        // ============================================================
-
-        let systemInvoiceUrl = null;
-        if (status !== "DRAFT") {
-            try {
-                const saleForInvoice = await Sale.findById(createdSale._id)
-                    .populate("customerId", "name mobile email")
-                    .populate("branchId", "name address phones email bankDetails upiQrImage");
-
-                const { url } = await generateSaleInvoicePdf(saleForInvoice.toObject());
-                systemInvoiceUrl = url;
-
-                createdSale.systemInvoiceFile = systemInvoiceUrl;
-                await createdSale.save();
-            } catch (pdfError) {
-                console.error("System Invoice PDF/S3 Error:", pdfError);
-            }
-        }
-
-        // ============================================================
         // 10. POPULATE RESPONSE
+        // ============================================================
+        // No more server-side system-invoice PDF generation here - the
+        // frontend now renders its own invoice template (see
+        // src/utils/Template/Invoice.jsx) straight off the data it
+        // already has once this response comes back, converts it to a
+        // PDF client-side, and uploads/persists systemInvoiceFile itself
+        // via POST /sale/upload-invoice + PATCH /sale/:id/invoice - see
+        // uploadSaleInvoice.controller.js/setSaleInvoiceFile.controller.js.
+        // Purchase's own server-side invoice generation is untouched.
         // ============================================================
 
         const populatedSale = await Sale.findById(createdSale._id)
@@ -836,9 +818,7 @@ export const createSaleController = async (req, res) => {
 
         const message = status === "DRAFT"
             ? "Sale draft saved successfully"
-            : systemInvoiceUrl
-                ? "Sale created successfully. System invoice generated."
-                : "Sale created successfully. System invoice generation failed.";
+            : "Sale created successfully";
 
         const responseData = {
             ...populatedSale.toObject(),
