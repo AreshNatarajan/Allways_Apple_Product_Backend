@@ -130,6 +130,21 @@ const branchSchema = new mongoose.Schema(
     },
 
     // =========================
+    // SERVICE MODULE
+    // =========================
+    // Marks this branch as the central Service branch (e.g. Chennai) -
+    // the Service module resolves its serviceBranchId by looking up
+    // Branch.findOne({isServiceBranch:true, isActive:true}) rather than
+    // hardcoding a branch name/id anywhere. At most one branch should
+    // have this set true at a time (enforced in the branch-update
+    // controller, not here, matching how every other business rule in
+    // this schema is enforced at the controller layer).
+    isServiceBranch: {
+      type: Boolean,
+      default: false,
+    },
+
+    // =========================
     // STATUS
     // =========================
     isActive: {

@@ -51,6 +51,7 @@ const productSerialSchema = new mongoose.Schema(
         "SOLD",         // Sold
         "DAMAGED",      // Damaged
         "MISSING",      // Reported missing at receive time (never entered available stock)
+        "IN_SERVICE",   // Held by the Service module - see Service.modal.js. Not sellable.
       ],
       default: "ASSIGNED",
     },

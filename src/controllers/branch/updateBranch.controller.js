@@ -36,7 +36,8 @@ export const updateBranchController = async (req, res) => {
             address,
             bankDetails,
             googleMapUrl,
-            isActive
+            isActive,
+            isServiceBranch
         } = req.body;
 
 
@@ -200,6 +201,22 @@ export const updateBranchController = async (req, res) => {
             updateData.isActive = isActive;
         }
 
+        // Only one branch can be the central Service branch at a time
+        // (see Service module - it resolves its serviceBranchId via
+        // Branch.findOne({isServiceBranch:true})). Setting this true on
+        // one branch unsets it on every other, atomically with this
+        // branch's own update, so there is never a moment with two (or
+        // zero, mid-switch) service branches.
+        if (isServiceBranch !== undefined) {
+            if (typeof isServiceBranch !== 'boolean') {
+                return errorResponse(res, "isServiceBranch must be a boolean value", 400);
+            }
+            if (isServiceBranch) {
+                await Branch.updateMany({ _id: { $ne: id } }, { isServiceBranch: false });
+            }
+            updateData.isServiceBranch = isServiceBranch;
+        }
+
         // ============================================================
         // 6. UPDATE BRANCH
         // ============================================================
@@ -230,6 +247,7 @@ export const updateBranchController = async (req, res) => {
                 upiQrImage: updatedBranch.upiQrImage,
                 googleMapUrl: updatedBranch.googleMapUrl,
                 isActive: updatedBranch.isActive,
+                isServiceBranch: updatedBranch.isServiceBranch,
                 createdAt: updatedBranch.createdAt,
                 updatedAt: updatedBranch.updatedAt,
                 createdBy: updatedBranch.createdBy,

@@ -43,6 +43,7 @@ const gstConfigSchema = new mongoose.Schema(
       purchase: { type: String, default: "PUR", trim: true, uppercase: true },
       sale: { type: String, default: "SAL", trim: true, uppercase: true },
       transfer: { type: String, default: "TRF", trim: true, uppercase: true },
+      service: { type: String, default: "SRV", trim: true, uppercase: true },
     },
 
     // Low-stock thresholds, independently configurable per product

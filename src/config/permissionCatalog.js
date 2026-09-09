@@ -29,6 +29,8 @@ export const PERMISSION_KEYS = [
   "pendingReceive.receive",
   "report.profitLoss.view",
   "storefront.manage",
+  "service.create", "service.manage",
+  "serviceVendor.manage",
 ];
 
 export const SUPER_ADMIN_ONLY_KEYS = ["purchase.review", "sale.review", "branch.view", "user.view", "report.profitLoss.view"];
@@ -49,6 +51,8 @@ export const DEFAULT_PERMISSIONS_BY_ROLE = {
     "transfer.create", "transfer.dispatch", "transfer.cancel", "transfer.receive",
     "pendingReceive.receive",
     "storefront.manage",
+    "service.create", "service.manage",
+    "serviceVendor.manage",
   ],
   STAFF: [
     "customer.create", "customer.edit", "customer.status",
@@ -58,6 +62,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE = {
     "sale.create", "sale.edit", "sale.return", "sale.exchange", "sale.tradeIn",
     "transfer.create", "transfer.dispatch", "transfer.cancel", "transfer.receive",
     "pendingReceive.receive",
+    "service.create", "service.manage",
   ],
 };
 
