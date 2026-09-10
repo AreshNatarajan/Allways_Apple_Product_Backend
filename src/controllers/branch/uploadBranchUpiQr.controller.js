@@ -3,8 +3,9 @@ import mongoose from "mongoose";
 import Branch from "../../models/Branch.modal.js";
 import {
     validateImageFile,
-    MIME_TO_EXTENSION,
+    resolveImageExtension,
 } from "../../middleware/uploadUserImage.middleware.js";
+import { convertImageForStorage } from "../../services/image/convertImageForStorage.js";
 import { putObject } from "../fileUpload/Products/putObject.js";
 import { deleteObject } from "../fileUpload/Products/deleteObject.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
@@ -36,15 +37,22 @@ export const uploadBranchUpiQrController = async (req, res) => {
             return errorResponse(res, "Branch not found", 404);
         }
 
-        const extension = MIME_TO_EXTENSION[file.mimetype] || "jpg";
+        let converted;
+        try {
+            converted = await convertImageForStorage(file, resolveImageExtension(file));
+        } catch (conversionError) {
+            console.error("HEIC conversion error:", conversionError);
+            return errorResponse(res, "Could not process this image - the file may be corrupted", 400);
+        }
+
         const storageKey = `branches/upi-qr/${id}-${Date.now()}-${crypto
             .randomBytes(6)
-            .toString("hex")}.${extension}`;
+            .toString("hex")}.${converted.extension}`;
 
         const { url, key } = await putObject(
-            file.data,
+            converted.data,
             storageKey,
-            file.mimetype
+            converted.mimetype
         );
 
         const previousKey = branch.upiQrImageKey;

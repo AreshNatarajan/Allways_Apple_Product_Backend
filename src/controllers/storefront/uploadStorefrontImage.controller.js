@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import { validateImageFile, MIME_TO_EXTENSION } from "../../middleware/uploadUserImage.middleware.js";
+import { validateImageFile, resolveImageExtension } from "../../middleware/uploadUserImage.middleware.js";
+import { convertImageForStorage } from "../../services/image/convertImageForStorage.js";
 import { putObject } from "../fileUpload/Products/putObject.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
@@ -17,12 +18,19 @@ export const uploadStorefrontImageController = async (req, res) => {
             return errorResponse(res, validationError, 400);
         }
 
-        const extension = MIME_TO_EXTENSION[file.mimetype];
+        let converted;
+        try {
+            converted = await convertImageForStorage(file, resolveImageExtension(file));
+        } catch (conversionError) {
+            console.error("HEIC conversion error:", conversionError);
+            return errorResponse(res, "Could not process this image - the file may be corrupted", 400);
+        }
+
         const storageKey = `storefront/products/${Date.now()}-${crypto
             .randomBytes(6)
-            .toString("hex")}.${extension}`;
+            .toString("hex")}.${converted.extension}`;
 
-        const { url, key } = await putObject(file.data, storageKey, file.mimetype);
+        const { url, key } = await putObject(converted.data, storageKey, converted.mimetype);
 
         return successResponse(res, "Image uploaded successfully", { url, key });
     } catch (error) {

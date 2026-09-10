@@ -2,8 +2,9 @@
 import crypto from "crypto";
 import {
   validateImageFile,
-  MIME_TO_EXTENSION,
+  resolveImageExtension,
 } from "../../middleware/uploadUserImage.middleware.js";
+import { convertImageForStorage } from "../../services/image/convertImageForStorage.js";
 import { putObject } from "../fileUpload/Products/putObject.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
@@ -30,12 +31,21 @@ export const uploadServiceItemStagingImagesController = async (req, res) => {
       }
     }
 
+    let converted;
+    try {
+      converted = await Promise.all(files.map((file) => convertImageForStorage(file, resolveImageExtension(file))));
+    } catch (conversionError) {
+      console.error("HEIC conversion error:", conversionError);
+      return errorResponse(res, "Could not process one of these images - the file may be corrupted", 400);
+    }
+
     const uploaded = [];
-    for (const file of files) {
-      const extension = MIME_TO_EXTENSION[file.mimetype] || "jpg";
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const { data, mimetype, extension } = converted[i];
       const storageKey = `services/staging/${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${extension}`;
 
-      const { url, key } = await putObject(file.data, storageKey, file.mimetype);
+      const { url, key } = await putObject(data, storageKey, mimetype);
       uploaded.push({ url, key, name: file.name || "" });
     }
 

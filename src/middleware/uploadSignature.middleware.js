@@ -75,6 +75,8 @@ export const uploadSignature =
                 "image/jpg",
                 "image/png",
                 "image/webp",
+                "image/heic",
+                "image/heif",
             ];
 
             if (
@@ -85,7 +87,7 @@ export const uploadSignature =
 
                 return cb(
                     new Error(
-                        "Only JPG, JPEG, PNG and WEBP images are allowed"
+                        "Only JPG, JPEG, PNG, WEBP, HEIC or HEIF images are allowed"
                     )
                 );
 

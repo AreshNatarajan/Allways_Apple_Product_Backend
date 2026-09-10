@@ -16,6 +16,8 @@ const ALLOWED_MIME_TYPES = [
     "image/jpg",
     "image/png",
     "image/webp",
+    "image/heic",
+    "image/heif",
 ];
 
 export const MIME_TO_EXTENSION = {
@@ -23,6 +25,24 @@ export const MIME_TO_EXTENSION = {
     "image/jpg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+};
+
+// Windows (without a HEIC codec pack installed) and some browsers report
+// no mimetype at all, or a generic one like application/octet-stream,
+// for a HEIC/HEIF file - the browser simply doesn't know what it is.
+// Relying on file.mimetype alone would then reject a genuine HEIC/HEIF
+// upload outright. This is used only as a narrow fallback SIGNAL for
+// whether to accept the file and which extension to store it under -
+// never for anything filename-derived beyond this fixed allowlist (no
+// path traversal risk: the stored key is still always built server-side
+// from ids/timestamps/random bytes, never the client's filename itself).
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+
+const extensionFromName = (name) => {
+    const ext = (name || "").split(".").pop()?.toLowerCase();
+    return ALLOWED_EXTENSIONS.includes(ext) ? ext : null;
 };
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -30,15 +50,14 @@ export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 /**
  * Validate an express-fileupload file object.
  * Returns an error message string if invalid, or null if valid.
- * Never trusts the client-supplied file.name for anything.
  */
 export const validateImageFile = (file) => {
     if (!file) {
         return "No image file uploaded";
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-        return "Only JPG, JPEG, PNG and WEBP images are allowed";
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype) && !extensionFromName(file.name)) {
+        return "Only JPG, JPEG, PNG, WEBP, HEIC or HEIF images are allowed";
     }
 
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -47,3 +66,12 @@ export const validateImageFile = (file) => {
 
     return null;
 };
+
+/**
+ * The extension to store an already-validated file under. Prefers the
+ * mimetype mapping; falls back to the file's own (allowlist-checked)
+ * extension when the mimetype was missing/generic - see the HEIC/HEIF
+ * note above. Only ever call this after validateImageFile() has passed.
+ */
+export const resolveImageExtension = (file) =>
+    MIME_TO_EXTENSION[file.mimetype] || extensionFromName(file.name) || "jpg";
