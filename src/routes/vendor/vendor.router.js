@@ -13,6 +13,8 @@ import { deleteVendorController } from "../../controllers/vendor/deleteVendor.co
 import { reactivateVendorController } from "../../controllers/vendor/reactivateVendor.controller.js";
 import { getVendorForTablePagination } from "../../controllers/vendor/getVendroForTablePagination.controller.js";
 import { getVendorStatsController } from "../../controllers/vendor/getVendorStats.controller.js";
+import { uploadVendorAttachmentsController } from "../../controllers/vendor/uploadVendorAttachments.controller.js";
+import { deleteVendorAttachmentController } from "../../controllers/vendor/deleteVendorAttachment.controller.js";
 
 // Vendor is a GLOBAL master (no branchId anywhere), shared across every
 // branch - one created by a branch user is usable from every branch,
@@ -38,6 +40,12 @@ router.post("/create", authMiddleware, requirePermission("vendor.create"), creat
 router.put("/update/:vendorId", authMiddleware, requirePermission("vendor.edit"), updateVendorController);
 router.delete("/delete/:vendorId", authMiddleware, requirePermission("vendor.status"), deleteVendorController);
 router.patch("/:vendorId/reactivate", authMiddleware, requirePermission("vendor.status"), reactivateVendorController);
+
+// Attachments - dynamic count, full CRUD (create=upload, read=already
+// included on the vendor document itself, delete=below). Same
+// vendor.edit grant as any other vendor field edit.
+router.post("/:vendorId/attachments", authMiddleware, requirePermission("vendor.edit"), uploadVendorAttachmentsController);
+router.delete("/:vendorId/attachments", authMiddleware, requirePermission("vendor.edit"), deleteVendorAttachmentController);
 
 // =========================
 // DYNAMIC ROUTES LAST

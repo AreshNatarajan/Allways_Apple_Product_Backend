@@ -54,6 +54,29 @@ const vendorSchema = new mongoose.Schema(
     },
 
     // =========================
+    // ATTACHMENTS - dynamic count (GST certificate, agreement, ID
+    // proof, etc). Real S3 objects the moment they're uploaded (see
+    // uploadVendorAttachments.controller.js) - this array only ever
+    // holds already-uploaded {url,key,...} references, never raw file
+    // data. No fixed slots; add/remove freely.
+    // =========================
+    attachments: {
+      type: [
+        {
+          url: { type: String, required: true, trim: true },
+          key: { type: String, required: true, trim: true },
+          name: { type: String, default: "", trim: true },
+          size: { type: Number, default: 0 },
+          uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          uploadedByName: { type: String, default: "" },
+          uploadedAt: { type: Date, default: Date.now },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
+
+    // =========================
     // STATUS FLAGS
     // =========================
     isActive: {
