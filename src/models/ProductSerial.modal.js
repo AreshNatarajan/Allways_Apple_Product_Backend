@@ -52,6 +52,7 @@ const productSerialSchema = new mongoose.Schema(
         "DAMAGED",      // Damaged
         "MISSING",      // Reported missing at receive time (never entered available stock)
         "IN_SERVICE",   // Held by the Service module - see Service.modal.js. Not sellable.
+        "RETURNED_TO_VENDOR", // Sent back to the vendor via Purchase Return - see PurchaseReturn.modal.js. Permanently out of sellable stock.
       ],
       default: "ASSIGNED",
     },
@@ -244,6 +245,22 @@ const productSerialSchema = new mongoose.Schema(
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+
+    // ============================================================
+    // PURCHASE RETURN (vendor return) - set only when status flips to
+    // RETURNED_TO_VENDOR, at the moment a PurchaseReturn is APPROVED
+    // (never at request time - see PurchaseReturn.modal.js). Mirrors
+    // soldAt/saleId's own pairing above.
+    // ============================================================
+    returnedToVendorAt: {
+      type: Date,
+      default: null,
+    },
+    purchaseReturnId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PurchaseReturn",
+      default: null,
     },
   },
   {

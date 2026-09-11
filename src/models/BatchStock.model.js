@@ -112,6 +112,17 @@ const batchStockSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Total quantity sent back to the vendor via an APPROVED Purchase
+    // Return (see PurchaseReturn.modal.js) - separate from soldQuantity/
+    // damagedQuantity since it's neither sold nor damaged, just no
+    // longer physically here. availableQuantity is decremented at the
+    // same time this increments.
+    returnedQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // ============================================================
     // PRICE
     // ============================================================

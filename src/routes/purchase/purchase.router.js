@@ -12,6 +12,8 @@ import { getAllPurchasesController } from '../../controllers/purchase/getAllPurc
 import { getPurchaseByIdController } from '../../controllers/purchase/getPurchaseById.controller.js';
 import { updatePurchaseController } from '../../controllers/purchase/updatePurchase.controller.js';
 import { reviewPurchaseController } from '../../controllers/purchase/reviewPurchase.controller.js';
+import { createPurchaseReturnController } from '../../controllers/purchase/createPurchaseReturn.controller.js';
+import { getPurchaseReturnsController } from '../../controllers/purchase/getPurchaseReturns.controller.js';
 
 import { statsPurchaseController } from '../../controllers/purchase/statsPurchase.controller.js';
 
@@ -82,6 +84,12 @@ router.get('/stats', authMiddleware, statsPurchaseController);
 // strictly required, but kept for clarity - same convention as
 // sale.router.js's /:id/review placement).
 router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewPurchaseController);
+// Applies immediately (no separate pending-approval gate) - mirrors
+// sale.router.js's own /:id/return + /:id/returns exactly. The EOD
+// review above is the shared safety net for both a purchase edit and a
+// return filed against it.
+router.post('/:id/return', authMiddleware, requirePermission('purchase.return'), createPurchaseReturnController);
+router.get('/:id/returns', authMiddleware, getPurchaseReturnsController);
 router.get('/:id', authMiddleware, getPurchaseByIdController);
 // SUPER_ADMIN always passes (fixed access); BRANCH_ADMIN/STAFF need the
 // matching per-user grant (requirePermission - see config/permissionCatalog.js),
