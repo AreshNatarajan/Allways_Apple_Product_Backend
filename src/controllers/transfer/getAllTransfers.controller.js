@@ -31,24 +31,43 @@ export const getAllTransfersController = async (req, res) => {
         const {
             page = 1, limit = 10, search = "", status = "ALL",
             branchId, direction = "all", startDate, endDate,
+            sourceBranchId, destinationBranchId,
             sortBy, sortOrder,
         } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const filter = { isDeleted: false };
+        const andConditions = [];
 
         // Branch scope: SUPER_ADMIN optionally views as any one branch via
         // `branchId`; everyone else is always scoped to their own branch.
+        // Built as an $and condition (not a direct field assignment) so it
+        // can never be silently overwritten by the explicit
+        // sourceBranchId/destinationBranchId narrowing below.
         const scopeBranchId = user.role === "SUPER_ADMIN" ? branchId : user.branchId?.toString();
         if (scopeBranchId && scopeBranchId !== "ALL" && mongoose.Types.ObjectId.isValid(scopeBranchId)) {
             const branchObjectId = new mongoose.Types.ObjectId(scopeBranchId);
-            if (direction === "outgoing") filter.sourceBranchId = branchObjectId;
-            else if (direction === "incoming") filter.destinationBranchId = branchObjectId;
-            else filter.$or = [{ sourceBranchId: branchObjectId }, { destinationBranchId: branchObjectId }];
+            if (direction === "outgoing") andConditions.push({ sourceBranchId: branchObjectId });
+            else if (direction === "incoming") andConditions.push({ destinationBranchId: branchObjectId });
+            else andConditions.push({ $or: [{ sourceBranchId: branchObjectId }, { destinationBranchId: branchObjectId }] });
         } else if (user.role !== "SUPER_ADMIN") {
             return errorResponse(res, "Branch not assigned to user", 400);
         }
         // SUPER_ADMIN with no branchId: unscoped, sees every transfer.
+
+        // Independent of the "view as branch" scope above - these narrow
+        // further to an exact counterparty branch on one specific side
+        // (e.g. "every transfer this branch received FROM Branch X"),
+        // which direction alone can't express. Available to every role,
+        // not just SUPER_ADMIN, since even a branch-scoped user deals
+        // with multiple counterparty branches on their own transfers.
+        // ANDed alongside the scope condition above, never replacing it.
+        if (sourceBranchId && sourceBranchId !== "ALL" && mongoose.Types.ObjectId.isValid(sourceBranchId)) {
+            andConditions.push({ sourceBranchId: new mongoose.Types.ObjectId(sourceBranchId) });
+        }
+        if (destinationBranchId && destinationBranchId !== "ALL" && mongoose.Types.ObjectId.isValid(destinationBranchId)) {
+            andConditions.push({ destinationBranchId: new mongoose.Types.ObjectId(destinationBranchId) });
+        }
 
         if (status && status !== "ALL") {
             filter.status = status;
@@ -59,6 +78,14 @@ export const getAllTransfersController = async (req, res) => {
             if (startDate) range.$gte = new Date(`${startDate}T00:00:00.000Z`);
             if (endDate) range.$lte = new Date(`${endDate}T23:59:59.999Z`);
             filter.createdAt = range;
+        }
+
+        // andConditions (scope + explicit source/destination narrowing) is
+        // reused as-is for statsFilter below, before search is folded in -
+        // stats stay branch-scoped but otherwise ignore status/search/date,
+        // same as before this change.
+        if (andConditions.length > 0) {
+            filter.$and = [...andConditions];
         }
 
         if (search && search.trim() !== "") {
@@ -111,9 +138,7 @@ export const getAllTransfersController = async (req, res) => {
         }));
 
         const statsFilter = { isDeleted: false };
-        if (filter.$or) statsFilter.$or = filter.$or;
-        if (filter.sourceBranchId) statsFilter.sourceBranchId = filter.sourceBranchId;
-        if (filter.destinationBranchId) statsFilter.destinationBranchId = filter.destinationBranchId;
+        if (andConditions.length > 0) statsFilter.$and = andConditions;
 
         const statusCounts = await Promise.all(STATUSES.map((s) => Transfer.countDocuments({ ...statsFilter, status: s })));
         const stats = { total: await Transfer.countDocuments(statsFilter) };
@@ -131,6 +156,7 @@ export const getAllTransfersController = async (req, res) => {
             filters: {
                 search: search || "", status: status || "ALL", branchId: branchId || "ALL",
                 direction: direction || "all", startDate: startDate || "", endDate: endDate || "",
+                sourceBranchId: sourceBranchId || "ALL", destinationBranchId: destinationBranchId || "ALL",
                 sortBy: sortBy || "", sortOrder: sortOrder || "desc",
             },
         });
