@@ -75,6 +75,13 @@ export const updatePurchaseController = async (req, res) => {
             return errorResponse(res, "Purchase not found", 404);
         }
 
+        // Captured before ANY mutation below, so the payment-reconciliation
+        // safety net near the end of this function can tell whether
+        // totalAmount actually moved this request, regardless of which
+        // section (new items, a serialized/non-serialized correction)
+        // caused it.
+        const originalTotalAmount = purchase.totalAmount;
+
         if (purchase.status === "CANCELLED") {
             await session.abortTransaction();
             session.endSession();
@@ -672,6 +679,52 @@ export const updatePurchaseController = async (req, res) => {
                 if (descChanged || notesChanged || mdmChanged || imagesChanged) {
                     await serial.save({ session });
                 }
+            }
+        }
+
+        // ============================================================
+        // PAYMENT RECONCILIATION SAFETY NET - the block above (~line
+        // 507) only recomputes paidAmount/pendingAmount/paymentStatus
+        // when the caller explicitly sends `paymentDetails`. New items
+        // or item-price corrections can change purchase.totalAmount
+        // through an entirely separate code path that never touches
+        // `paymentDetails` - without this, a request that changes the
+        // total but doesn't resend payment info would leave a stale
+        // paidAmount/pendingAmount/paymentStatus on the purchase (e.g.
+        // still "PAID" even though the real total now exceeds what was
+        // actually collected). The current frontend always resends
+        // paymentDetails (even as []), so this never fires from the
+        // app's own UI today - it exists so the backend's own financial
+        // consistency never depends on that being true forever.
+        // paidAmount itself (what was actually collected) is never
+        // touched here, only the derived status/pending figures.
+        // ============================================================
+        if (paymentDetails === undefined && purchase.totalAmount !== originalTotalAmount) {
+            const totalAmount = purchase.totalAmount;
+            const currentPaid = purchase.paidAmount || 0;
+            let reconciledStatus;
+            let reconciledPending;
+
+            if (currentPaid <= 0) {
+                reconciledStatus = "PENDING";
+                reconciledPending = totalAmount;
+            } else if (currentPaid >= totalAmount - 0.01) {
+                reconciledStatus = "PAID";
+                reconciledPending = 0;
+            } else {
+                reconciledStatus = "PARTIAL";
+                reconciledPending = Math.round((totalAmount - currentPaid) * 100) / 100;
+            }
+
+            if (reconciledStatus !== purchase.paymentStatus || Math.abs(reconciledPending - (purchase.pendingAmount || 0)) > 0.01) {
+                changes.push({
+                    field: "paymentStatus",
+                    label: "Payment Status (auto-reconciled against new total)",
+                    oldValue: { paymentStatus: purchase.paymentStatus, pendingAmount: purchase.pendingAmount },
+                    newValue: { paymentStatus: reconciledStatus, pendingAmount: reconciledPending },
+                });
+                purchase.paymentStatus = reconciledStatus;
+                purchase.pendingAmount = reconciledPending;
             }
         }
 
