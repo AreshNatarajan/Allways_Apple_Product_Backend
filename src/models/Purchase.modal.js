@@ -22,9 +22,29 @@ const paymentDetailSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    // Legacy single-file field - kept ONLY so a payment recorded before
+    // multi-evidence support still reads back correctly (never written
+    // to by new code; see `attachments` below, the current field).
     attachment: {
       type: String,
       default: null,
+    },
+    // Dynamic list of evidence files (0, 1, 2+) - a single logged
+    // payment amount can legitimately be made up of more than one
+    // transaction on the same method (e.g. two separate UPI transfers
+    // that together equal this row's amount), so each gets its own
+    // proof screenshot attached to this ONE row instead of forcing a
+    // whole extra payment row per screenshot.
+    attachments: {
+      type: [
+        {
+          url: { type: String, required: true, trim: true },
+          key: { type: String, default: null, trim: true },
+          name: { type: String, default: "", trim: true },
+          _id: false,
+        },
+      ],
+      default: [],
     },
     // Who actually handled this specific payment - full audit trail
     // for multi-user cash handling. Optional/unset on payments

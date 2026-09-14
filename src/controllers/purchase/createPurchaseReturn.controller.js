@@ -99,7 +99,15 @@ export const createPurchaseReturnController = async (req, res) => {
                 refundDate: r.refundDate ? new Date(r.refundDate) : new Date(),
                 refundMethod: r.refundMethod || "CASH",
                 notes: r.notes || "",
-                attachment: r.attachment || null,
+                attachments: Array.isArray(r.attachments)
+                    ? r.attachments
+                        .filter((a) => a && typeof a.url === "string" && a.url.trim())
+                        .map((a) => ({
+                            url: a.url.trim(),
+                            key: typeof a.key === "string" ? a.key.trim() : null,
+                            name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : "",
+                        }))
+                    : [],
                 handledBy: {
                     userId: user._id,
                     name: user.name || "",

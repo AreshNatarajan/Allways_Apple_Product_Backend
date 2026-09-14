@@ -122,7 +122,15 @@ export const createSaleTradeInController = async (req, res) => {
                     date: s.date ? new Date(s.date) : new Date(),
                     method: s.method || "CASH",
                     notes: s.notes || "",
-                    attachment: s.attachment || null,
+                    attachments: Array.isArray(s.attachments)
+                        ? s.attachments
+                            .filter((a) => a && typeof a.url === "string" && a.url.trim())
+                            .map((a) => ({
+                                url: a.url.trim(),
+                                key: typeof a.key === "string" ? a.key.trim() : null,
+                                name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : "",
+                            }))
+                        : [],
                     handledBy: {
                         userId: user._id,
                         name: user.name || "",

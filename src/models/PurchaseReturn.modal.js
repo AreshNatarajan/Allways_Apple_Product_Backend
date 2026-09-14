@@ -110,9 +110,25 @@ const refundDetailSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    // Legacy single-file field - kept ONLY so a refund recorded before
+    // multi-evidence support still reads back correctly (never written
+    // to by new code; see `attachments` below, the current field).
     attachment: {
       type: String,
       default: null,
+    },
+    // Dynamic list of evidence files (0, 1, 2+) - same reasoning as
+    // Purchase.paymentDetailSchema's own attachments[].
+    attachments: {
+      type: [
+        {
+          url: { type: String, required: true, trim: true },
+          key: { type: String, default: null, trim: true },
+          name: { type: String, default: "", trim: true },
+          _id: false,
+        },
+      ],
+      default: [],
     },
     handledBy: {
       userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

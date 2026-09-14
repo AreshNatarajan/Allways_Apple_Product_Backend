@@ -816,7 +816,15 @@ export const updateSaleController = async (req, res) => {
                 paymentDate: p.paymentDate ? new Date(p.paymentDate) : new Date(),
                 paymentMethod: p.paymentMethod || "CASH",
                 notes: p.notes || "",
-                attachment: p.attachment || null,
+                attachments: Array.isArray(p.attachments)
+                    ? p.attachments
+                        .filter((a) => a && typeof a.url === "string" && a.url.trim())
+                        .map((a) => ({
+                            url: a.url.trim(),
+                            key: typeof a.key === "string" ? a.key.trim() : null,
+                            name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : "",
+                        }))
+                    : [],
                 handledBy: { userId: user._id, name: user.name || "", role: user.role || "" },
             }));
         }
@@ -829,9 +837,23 @@ export const updateSaleController = async (req, res) => {
         if (paidAmount === totalAmount && totalAmount > 0) paymentStatus = "PAID";
         else if (paidAmount > 0 && paidAmount < totalAmount) paymentStatus = "PARTIAL";
 
+        // Per-row comparison, not just the derived status/total summary -
+        // that alone missed a real edit whenever total paid didn't change
+        // (correcting a payment's method/date/notes, or just its evidence
+        // files), which could falsely trip the "No changes detected"
+        // guard below if that was the only thing edited in the request.
+        const summarizePayments = (list) => (list || []).map((p) => ({
+            amount: p.amount,
+            paymentDate: p.paymentDate ? new Date(p.paymentDate).toISOString() : null,
+            paymentMethod: p.paymentMethod,
+            notes: p.notes || "",
+            attachments: (p.attachments || []).map((a) => a.key || a.url),
+        }));
+        const paymentsChanged = JSON.stringify(summarizePayments(finalPaymentDetails)) !== JSON.stringify(summarizePayments(sale.paymentDetails));
+
         const oldPaymentSummary = `${sale.paymentStatus} · Paid ${sale.paidAmount ?? 0}`;
         const newPaymentSummary = `${paymentStatus} · Paid ${paidAmount}`;
-        if (oldPaymentSummary !== newPaymentSummary) {
+        if (paymentsChanged || oldPaymentSummary !== newPaymentSummary) {
             changes.push({ field: "paymentDetails", label: "Payment Details", oldValue: oldPaymentSummary, newValue: newPaymentSummary });
         }
 

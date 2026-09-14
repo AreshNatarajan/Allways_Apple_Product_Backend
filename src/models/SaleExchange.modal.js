@@ -150,9 +150,26 @@ const settlementDetailSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Legacy single-file field - kept ONLY so a settlement recorded
+    // before multi-evidence support still reads back correctly (never
+    // written to by new code; see `attachments` below).
     attachment: {
       type: String,
       default: null,
+    },
+
+    // Dynamic list of evidence files (0, 1, 2+) - same reasoning as
+    // SaleReturn.refundDetailSchema's own attachments[].
+    attachments: {
+      type: [
+        {
+          url: { type: String, required: true, trim: true },
+          key: { type: String, default: null, trim: true },
+          name: { type: String, default: "", trim: true },
+          _id: false,
+        },
+      ],
+      default: [],
     },
 
     // Stamped server-side from the authenticated user, never

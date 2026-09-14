@@ -290,7 +290,15 @@ export const createPurchaseController = async (req, res) => {
                 paymentDate: p.paymentDate ? new Date(p.paymentDate) : new Date(),
                 paymentMethod: p.paymentMethod || "CASH",
                 notes: p.notes || "",
-                attachment: p.attachment || null,
+                attachments: Array.isArray(p.attachments)
+                    ? p.attachments
+                        .filter((a) => a && typeof a.url === "string" && a.url.trim())
+                        .map((a) => ({
+                            url: a.url.trim(),
+                            key: typeof a.key === "string" ? a.key.trim() : null,
+                            name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : "",
+                        }))
+                    : [],
                 // Never trust a client-supplied handler - always the
                 // authenticated user recording this payment right now.
                 handledBy: {

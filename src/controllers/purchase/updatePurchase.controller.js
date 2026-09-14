@@ -522,7 +522,15 @@ export const updatePurchaseController = async (req, res) => {
                 paymentDate: p.paymentDate ? new Date(p.paymentDate) : new Date(),
                 paymentMethod: p.paymentMethod || "CASH",
                 notes: p.notes || "",
-                attachment: p.attachment || null,
+                attachments: Array.isArray(p.attachments)
+                    ? p.attachments
+                        .filter((a) => a && typeof a.url === "string" && a.url.trim())
+                        .map((a) => ({
+                            url: a.url.trim(),
+                            key: typeof a.key === "string" ? a.key.trim() : null,
+                            name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : "",
+                        }))
+                    : [],
                 handledBy: {
                     userId: user._id,
                     name: user.name || "",
@@ -568,10 +576,17 @@ export const updatePurchaseController = async (req, res) => {
                 throw buildValidationError("paymentStatus must be PAID, PENDING, or PARTIAL");
             }
 
+            // Includes every field a row can actually change - missing
+            // paymentDate/attachments here would mean a payment edited
+            // ONLY by its date or its evidence files never gets logged,
+            // and if that's the sole change in the whole request, would
+            // falsely trip the "No changes detected" guard below.
             const summarize = (list) => (list || []).map((p) => ({
                 amount: p.amount,
+                paymentDate: p.paymentDate ? new Date(p.paymentDate).toISOString() : null,
                 paymentMethod: p.paymentMethod,
                 notes: p.notes || "",
+                attachments: (p.attachments || []).map((a) => a.key || a.url),
             }));
             const paymentsChanged = JSON.stringify(summarize(cleanedPayments)) !== JSON.stringify(summarize(purchase.paymentDetails));
 
