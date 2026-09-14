@@ -67,17 +67,25 @@ export const getPublicStorefrontProductsController = async (req, res) => {
 
         const products = serials
             .filter((s) => s.productId)
-            .map((s) => ({
-                _id: s._id,
-                name: s.productId.name,
-                category: s.productId.category,
-                modelNumber: s.productId.modelNumber || "",
-                price: s.sellingPrice || 0,
-                shortDescription: s.description?.main || "",
-                image: s.images?.[0]?.url || null,
-                images: s.images || [],
-                branch: s.currentBranchId ? { _id: s.currentBranchId._id, name: s.currentBranchId.name, code: s.currentBranchId.code } : null,
-            }));
+            .map((s) => {
+                // Staff sets `position` manually at Purchase Create/Edit
+                // time (see SerialImageModal.jsx) - sorted here rather
+                // than trusted as already-sorted, so the grid thumbnail
+                // (images[0]) is always the genuine position-1 photo even
+                // for a record saved before this field existed.
+                const sortedImages = [...(s.images || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
+                return {
+                    _id: s._id,
+                    name: s.productId.name,
+                    category: s.productId.category,
+                    modelNumber: s.productId.modelNumber || "",
+                    price: s.sellingPrice || 0,
+                    shortDescription: s.description?.main || "",
+                    image: sortedImages[0]?.url || null,
+                    images: sortedImages,
+                    branch: s.currentBranchId ? { _id: s.currentBranchId._id, name: s.currentBranchId.name, code: s.currentBranchId.code } : null,
+                };
+            });
 
         return successResponse(res, "Products retrieved successfully", {
             products,

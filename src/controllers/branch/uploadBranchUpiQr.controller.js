@@ -39,7 +39,12 @@ export const uploadBranchUpiQrController = async (req, res) => {
 
         let converted;
         try {
-            converted = await convertImageForStorage(file, resolveImageExtension(file));
+            // skipCompression: a payment QR code must stay byte-exact
+            // scannable - resizing/recompressing (even losslessly for
+            // PNG) is a real functional risk here, not just a quality
+            // tradeoff, so this only ever gets the HEIC-conversion
+            // pass-through that every image upload already needed.
+            converted = await convertImageForStorage(file, resolveImageExtension(file), { skipCompression: true });
         } catch (conversionError) {
             console.error("HEIC conversion error:", conversionError);
             return errorResponse(res, "Could not process this image - the file may be corrupted", 400);

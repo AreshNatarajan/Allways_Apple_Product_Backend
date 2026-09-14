@@ -156,12 +156,20 @@ const productSerialSchema = new mongoose.Schema(
     // architecture as Product images (putObject/deleteObject) - never
     // raw/base64 image data stored in Mongo. Genuinely dynamic length:
     // 0, 1, 2, 10+ images, no fixed image1/image2/image3 slots.
+    // `position` is a manually-entered, explicit 1-based display order
+    // (staff types "1", "2", "3"... at Purchase Create/Edit time to say
+    // which photo the storefront shows first) - NOT derived from array
+    // index or upload order. The array itself is always kept sorted by
+    // `position` ascending (see SerialImageModal.jsx), so images[0] is
+    // always position 1, but `position` is still stored explicitly per
+    // the storefront/e-commerce app's own contract for ordering photos.
     images: {
       type: [
         {
           url: { type: String, required: true, trim: true },
           key: { type: String, required: true, trim: true },
           name: { type: String, default: "", trim: true },
+          position: { type: Number, default: 1, min: 1 },
           _id: false,
         },
       ],

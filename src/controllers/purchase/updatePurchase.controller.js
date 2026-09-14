@@ -613,10 +613,14 @@ export const updatePurchaseController = async (req, res) => {
                 const newImages = rawNewImages
                     ? rawNewImages
                         .filter((img) => img && typeof img.url === "string" && typeof img.key === "string" && img.url.trim() && img.key.trim())
-                        .map((img) => ({
+                        .map((img, i) => ({
                             url: img.url.trim(),
                             key: img.key.trim(),
                             name: typeof img.name === "string" ? img.name.trim().slice(0, 200) : "",
+                            // Manually-entered by staff (see SerialImageModal.jsx);
+                            // falls back to array position only if a client ever
+                            // omits it, so this can never be missing/0 in the DB.
+                            position: Number.isFinite(img.position) && img.position >= 1 ? Math.trunc(img.position) : i + 1,
                         }))
                     : (serial.images || []);
 

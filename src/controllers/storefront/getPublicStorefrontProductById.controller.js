@@ -36,7 +36,12 @@ export const getPublicStorefrontProductByIdController = async (req, res) => {
             shortDescription: serial.description?.main || "",
             description: serial.description?.second || "",
             mdm: !!serial.mdm,
-            images: serial.images || [],
+            // Staff sets `position` manually at Purchase Create/Edit time
+            // (see SerialImageModal.jsx) - sorted here rather than
+            // trusted as already-sorted, so the gallery's main/cover
+            // photo (images[0]) is always the genuine position-1 image
+            // even for a record saved before this field existed.
+            images: [...(serial.images || [])].sort((a, b) => (a.position || 0) - (b.position || 0)),
             branch: serial.currentBranchId ? { _id: serial.currentBranchId._id, name: serial.currentBranchId.name, code: serial.currentBranchId.code } : null,
         };
 
