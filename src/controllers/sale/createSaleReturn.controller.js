@@ -162,6 +162,9 @@ export const createSaleReturnController = async (req, res) => {
                     hub: !!givenAtSale.hub && !!requestedComplimentary.hub,
                     msOffice: !!givenAtSale.msOffice && !!requestedComplimentary.msOffice,
                     case: !!givenAtSale.case && !!requestedComplimentary.case,
+                    temperGlass: !!givenAtSale.temperGlass && !!requestedComplimentary.temperGlass,
+                    cable: !!givenAtSale.cable && !!requestedComplimentary.cable,
+                    adapter: !!givenAtSale.adapter && !!requestedComplimentary.adapter,
                 };
                 returnItems.push({
                     productId: saleLine.productId,

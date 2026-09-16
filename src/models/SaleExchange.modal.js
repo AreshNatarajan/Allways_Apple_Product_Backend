@@ -117,6 +117,9 @@ const exchangeItemSchema = new mongoose.Schema(
       hub: { type: Boolean, default: false },
       msOffice: { type: Boolean, default: false },
       case: { type: Boolean, default: false },
+      temperGlass: { type: Boolean, default: false },
+      cable: { type: Boolean, default: false },
+      adapter: { type: Boolean, default: false },
     },
   },
   { _id: false }

@@ -167,6 +167,9 @@ export const createSaleExchangeController = async (req, res) => {
             hub: !!newComplimentary?.hub,
             msOffice: !!newComplimentary?.msOffice,
             case: !!newComplimentary?.case,
+            temperGlass: !!newComplimentary?.temperGlass,
+            cable: !!newComplimentary?.cable,
+            adapter: !!newComplimentary?.adapter,
         };
 
         // Old item's financials are already fully computed and frozen on
@@ -258,6 +261,9 @@ export const createSaleExchangeController = async (req, res) => {
                             hub: !!oldLine.complimentary?.hub,
                             msOffice: !!oldLine.complimentary?.msOffice,
                             case: !!oldLine.complimentary?.case,
+                            temperGlass: !!oldLine.complimentary?.temperGlass,
+                            cable: !!oldLine.complimentary?.cable,
+                            adapter: !!oldLine.complimentary?.adapter,
                         },
                     },
                     newItem: {

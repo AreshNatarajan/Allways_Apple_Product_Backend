@@ -31,6 +31,9 @@ const describeComplimentary = (c) => {
     if (c.hub) given.push("Hub");
     if (c.msOffice) given.push("MS Office");
     if (c.case) given.push("Case");
+    if (c.temperGlass) given.push("Tempered Glass");
+    if (c.cable) given.push("Cable");
+    if (c.adapter) given.push("Adapter");
     return given.length > 0 ? given.join(", ") : "None";
 };
 
@@ -368,6 +371,9 @@ export const updateSaleController = async (req, res) => {
                 hub: complimentary?.hub !== undefined ? !!complimentary.hub : !!line.complimentary?.hub,
                 msOffice: complimentary?.msOffice !== undefined ? !!complimentary.msOffice : !!line.complimentary?.msOffice,
                 case: complimentary?.case !== undefined ? !!complimentary.case : !!line.complimentary?.case,
+                temperGlass: complimentary?.temperGlass !== undefined ? !!complimentary.temperGlass : !!line.complimentary?.temperGlass,
+                cable: complimentary?.cable !== undefined ? !!complimentary.cable : !!line.complimentary?.cable,
+                adapter: complimentary?.adapter !== undefined ? !!complimentary.adapter : !!line.complimentary?.adapter,
             };
             if (complimentary && JSON.stringify(newComplimentary) !== JSON.stringify(line.complimentary || {})) {
                 changes.push({
@@ -657,7 +663,7 @@ export const updateSaleController = async (req, res) => {
                 finalAmount,
                 profit,
                 profitAfterGst,
-                complimentary: { bag: false, hub: false, msOffice: false, case: false },
+                complimentary: { bag: false, hub: false, msOffice: false, case: false, temperGlass: false, cable: false, adapter: false },
             });
 
             changes.push({
