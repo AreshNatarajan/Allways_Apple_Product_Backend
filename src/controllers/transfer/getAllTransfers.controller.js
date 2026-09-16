@@ -96,6 +96,11 @@ export const getAllTransfersController = async (req, res) => {
                 { destinationBranchName: searchRegex },
                 { "items.productName": searchRegex },
                 { "items.productCode": searchRegex },
+                // Serialized items - the exact unit's serial number.
+                { "items.serials.serialNumber": searchRegex },
+                // Non-serialized items - the source batch this quantity
+                // was drawn from.
+                { "items.sourceBatches.batchNumber": searchRegex },
                 { notes: searchRegex },
             ];
             filter.$and = [...(filter.$and || []), { $or: searchOr }];

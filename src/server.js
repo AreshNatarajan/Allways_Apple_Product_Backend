@@ -7,9 +7,11 @@ dns.setServers(["1.1.1.1", "8.8.8.8"]);
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import http from "http";
 import connectDB from "./config/db.js";
 import path from "path";
 import fileUpload from "express-fileupload";
+import { initSocket } from "./socket/index.js";
 
 // dotenv.config();
 
@@ -168,8 +170,21 @@ app.use('/api/public/storefront', publicStorefrontRouter);
 app.use('/api/service-vendor', serviceVendorRouter);
 app.use('/api/service', serviceRouter);
 
+import notificationRouter from "./routes/notification/notification.router.js";
+// Transfer-only for now (see socket/index.js and
+// services/notification/notifyTransferEvent.js) - Purchase/Sale/
+// Returns/Service/Stock notifications are a later task against this
+// same model/routes, not implemented here.
+app.use('/api/notifications', notificationRouter);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+// http.createServer(app) instead of app.listen(...) directly - the only
+// change needed to also attach Socket.IO (initSocket) to the exact same
+// server/port, no separate process or port.
+const httpServer = http.createServer(app);
+initSocket(httpServer, allowedOrigins);
+
+httpServer.listen(PORT, () => {
     console.log(`Server running on port http://localhost:${PORT}`);
 });

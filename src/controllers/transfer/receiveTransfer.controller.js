@@ -5,6 +5,7 @@ import TransferHistory from "../../models/TransferHistory.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
+import { notifyTransferEvent } from "../../services/notification/notifyTransferEvent.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 const VALID_CONDITIONS = ["GOOD", "DAMAGED", "MISSING"];
@@ -284,6 +285,20 @@ export const receiveTransferController = async (req, res) => {
     const populatedTransfer = await Transfer.findById(transfer._id)
       .populate("sourceBranchId", "name code")
       .populate("destinationBranchId", "name code");
+
+    // Fired only after the transaction above has already committed
+    // successfully. RECEIVED notifies the SOURCE branch + SUPER_ADMIN -
+    // the destination branch already knows (they're the ones who just
+    // received it), so the new information here is for the source
+    // branch and SUPER_ADMIN, matching the task spec exactly.
+    await notifyTransferEvent({
+      type: "TRANSFER_RECEIVED",
+      transfer: populatedTransfer,
+      // The RAW (unpopulated) id from `transfer`, not
+      // `populatedTransfer.sourceBranchId` (a populated Branch document
+      // by this point, not an id).
+      branchIds: [transfer.sourceBranchId],
+    });
 
     return successResponse(res, "Transfer received successfully", { transfer: populatedTransfer });
   } catch (error) {

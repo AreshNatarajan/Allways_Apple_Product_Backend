@@ -5,6 +5,7 @@ import TransferHistory from "../../models/TransferHistory.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
+import { notifyTransferEvent } from "../../services/notification/notifyTransferEvent.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 // Every serial/batch was already reserved at creation
@@ -219,6 +220,30 @@ export const updateTransferStatusController = async (req, res) => {
       .populate("dispatchedBy", "name email")
       .populate("receivedBy", "name email")
       .populate("cancelledBy", "name email");
+
+    // Fired only after the transaction above has already committed
+    // successfully. PACKED/DISPATCHED both notify the destination
+    // branch + SUPER_ADMIN (the destination doesn't know about either
+    // of these yet) - matching the task spec exactly. CANCEL is
+    // deliberately out of this task's scope (spec covers only CREATE ->
+    // PROCESSING -> PACKED -> DISPATCHED -> RECEIVED), so no
+    // notification is fired for it.
+    if (historyAction === "PACKED") {
+      await notifyTransferEvent({
+        type: "TRANSFER_PACKED",
+        transfer: populatedTransfer,
+        // The RAW (unpopulated) id from `transfer`, not
+        // `populatedTransfer.destinationBranchId` - the latter is a
+        // populated Branch document by this point, not an id.
+        branchIds: [transfer.destinationBranchId],
+      });
+    } else if (historyAction === "DISPATCHED") {
+      await notifyTransferEvent({
+        type: "TRANSFER_DISPATCHED",
+        transfer: populatedTransfer,
+        branchIds: [transfer.destinationBranchId],
+      });
+    }
 
     return successResponse(res, `Transfer ${historyAction.toLowerCase()} successfully`, {
       transfer: populatedTransfer,

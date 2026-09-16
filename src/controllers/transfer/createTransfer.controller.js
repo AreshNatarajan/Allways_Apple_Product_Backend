@@ -9,6 +9,7 @@ import { resolveActiveBranch } from "../../services/branchValidation.service.js"
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
+import { notifyTransferEvent } from "../../services/notification/notifyTransferEvent.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 // ============================================================
@@ -317,6 +318,16 @@ export const createTransferController = async (req, res) => {
       .populate("sourceBranchId", "name code")
       .populate("destinationBranchId", "name code")
       .populate("createdBy", "name email");
+
+    // Fired only after the transaction above has already committed
+    // successfully - never notifies for a failed create. Destination
+    // branch + SUPER_ADMIN only (never the source branch - they already
+    // know, they just created it), matching the task spec exactly.
+    await notifyTransferEvent({
+      type: "TRANSFER_CREATED",
+      transfer: populatedTransfer,
+      branchIds: [destinationBranchId],
+    });
 
     return successResponse(res, "Transfer created successfully", {
       transfer: populatedTransfer,
