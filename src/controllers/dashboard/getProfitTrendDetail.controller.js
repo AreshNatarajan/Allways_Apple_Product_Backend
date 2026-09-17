@@ -1,8 +1,7 @@
 // controllers/dashboard/getProfitTrendDetail.controller.js
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
-import SaleReturn from "../../models/SaleReturn.modal.js";
-import SaleExchange from "../../models/SaleExchange.modal.js";
+import { getReturnExchangeAdjustmentRows } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { errorResponse, successResponse } from "../../utils/responseHandler.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -54,7 +53,11 @@ export const getProfitTrendDetailController = async (req, res) => {
             ? { branchId: new mongoose.Types.ObjectId(branchId) }
             : {};
 
-        const [sales, returns, exchanges] = await Promise.all([
+        const branchObjectId = branchId && mongoose.Types.ObjectId.isValid(branchId)
+            ? new mongoose.Types.ObjectId(branchId)
+            : null;
+
+        const [sales, adjustmentRows] = await Promise.all([
             Sale.find({
                 status: "COMPLETED",
                 isDeleted: false,
@@ -65,22 +68,19 @@ export const getProfitTrendDetailController = async (req, res) => {
                 .populate("customerId", "name")
                 .sort({ totalProfit: 1 })
                 .lean(),
-            SaleReturn.find({
-                isDeleted: false,
-                processStatus: { $ne: "REJECTED" },
-                createdAt: { $gte: start, $lt: end },
-                ...branchMatch,
-            })
-                .select("saleId saleNumber createdAt refundAmount items")
-                .lean(),
-            SaleExchange.find({
-                isDeleted: false,
-                processStatus: { $ne: "REJECTED" },
-                exchangedAt: { $gte: start, $lt: end },
-                ...branchMatch,
-            })
-                .select("saleId saleNumber exchangedAt oldItem newItem priceDifference")
-                .lean(),
+            // Same shared service getDashboard.controller.js's own
+            // profitTrend uses to fold Return/Exchange deltas into a
+            // day/month's total - reusing it here (rather than a second,
+            // separately-hand-rolled calculation) is what guarantees this
+            // drill-down's numbers always agree with the chart's own,
+            // including the real purchase-price-aware profit impact of a
+            // return (never just -refundAmount, which ignores that the
+            // unit's cost is still recovered stock, not a total loss).
+            // `end` here is EXCLUSIVE (resolveRange's own convention) but
+            // this service's own `end` is inclusive ($lte) - back off by
+            // 1ms so a row at exactly the next bucket's start boundary
+            // isn't double-counted into this one.
+            getReturnExchangeAdjustmentRows({ branchObjectId, start, end: new Date(end.getTime() - 1) }),
         ]);
 
         const formattedSales = sales.map((sale) => {
@@ -111,43 +111,23 @@ export const getProfitTrendDetailController = async (req, res) => {
             };
         });
 
-        // Returns don't carry their own frozen purchasePrice on
-        // SaleReturn.items[] (see getReturnExchangeAdjustments.js's own
-        // comment on this) - a return's profit IMPACT is what matters
-        // here (how much it moved this period's total), not a
-        // standalone per-item profit figure, so this only ever reports
-        // -refundAmount as the adjustment, same sign convention the
-        // dashboard's own trend already uses.
-        const formattedReturns = returns.map((r) => ({
-            type: "RETURN",
-            _id: r._id,
-            saleId: r.saleId,
-            saleNumber: r.saleNumber,
-            date: r.createdAt,
-            profitAdjustment: round2(-(r.refundAmount || 0)),
-            isLoss: true,
-        }));
-
-        const formattedExchanges = exchanges.map((ex) => {
-            const salesAdjustment = (ex.newItem?.finalAmount || 0) - (ex.oldItem?.finalAmount || 0);
-            const costAdjustment = (ex.newItem?.purchasePrice || 0) - (ex.oldItem?.purchasePrice || 0);
-            const profitAdjustment = round2(salesAdjustment - costAdjustment);
-            return {
-                type: "EXCHANGE",
-                _id: ex._id,
-                saleId: ex.saleId,
-                saleNumber: ex.saleNumber,
-                date: ex.exchangedAt,
-                profitAdjustment,
-                isLoss: profitAdjustment < 0,
-            };
-        });
+        const formattedAdjustments = adjustmentRows
+            .map((r) => ({
+                type: r.type,
+                _id: r._id,
+                saleId: r.saleId,
+                saleNumber: r.saleNumber,
+                date: r.date,
+                profitAdjustment: round2(r.profitAdjustment),
+                isLoss: r.profitAdjustment < 0,
+            }))
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
 
         return successResponse(res, "Profit trend detail retrieved successfully", {
             period,
             key,
             sales: formattedSales,
-            adjustments: [...formattedReturns, ...formattedExchanges].sort((a, b) => new Date(a.date) - new Date(b.date)),
+            adjustments: formattedAdjustments,
         });
     } catch (error) {
         console.error("Get Profit Trend Detail Error:", error);

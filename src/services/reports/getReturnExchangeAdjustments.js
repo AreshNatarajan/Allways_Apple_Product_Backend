@@ -113,7 +113,9 @@ export const getReturnExchangeAdjustmentRows = async ({ branchObjectId, start, e
       },
       {
         $project: {
-          _id: 0,
+          _id: 1,
+          saleId: 1,
+          saleNumber: 1,
           createdAt: 1,
           refundAmount: 1,
           quantity: "$items.quantity",
@@ -124,11 +126,16 @@ export const getReturnExchangeAdjustmentRows = async ({ branchObjectId, start, e
         },
       },
     ]),
-    SaleExchange.find(exchangeMatch).select("exchangedAt oldItem newItem priceDifference").lean(),
+    SaleExchange.find(exchangeMatch).select("saleId saleNumber exchangedAt oldItem newItem priceDifference").lean(),
   ]);
 
   const rows = [];
 
+  // `_id`/`saleId`/`saleNumber`/`type` are carried on every row purely
+  // for a caller that needs to attribute a delta back to a specific
+  // document (see getProfitTrendDetail.controller.js's drill-down) -
+  // sumAdjustmentRows/bucketAdjustmentRowsByDay below never read them,
+  // so this is a strictly additive change for every existing caller.
   for (const r of returnRows) {
     const refund = r.refundAmount || 0;
     const qty = r.quantity || 0;
@@ -138,6 +145,10 @@ export const getReturnExchangeAdjustmentRows = async ({ branchObjectId, start, e
     const purchaseGst = ((r.matchedPurchaseGstAmount || 0) / lineQty) * qty;
 
     rows.push({
+      type: "RETURN",
+      _id: r._id,
+      saleId: r.saleId,
+      saleNumber: r.saleNumber,
       date: r.createdAt,
       salesAdjustment: -refund,
       costAdjustment: -cost,
@@ -153,6 +164,10 @@ export const getReturnExchangeAdjustmentRows = async ({ branchObjectId, start, e
     const gstAdjustment = (ex.newItem?.gstAmount || 0) - (ex.oldItem?.gstAmount || 0);
 
     rows.push({
+      type: "EXCHANGE",
+      _id: ex._id,
+      saleId: ex.saleId,
+      saleNumber: ex.saleNumber,
       date: ex.exchangedAt,
       salesAdjustment,
       costAdjustment,
