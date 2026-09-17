@@ -151,6 +151,21 @@ export const createSaleReturnController = async (req, res) => {
                 }
 
                 const unitPrice = saleLine.sellingPrice || 0;
+                // lineRefundAmount is what this return line is actually
+                // "worth" (what PaymentCard.jsx's Total Returned/Net
+                // Transaction Value are computed from) - NOT unitPrice
+                // (the raw pre-discount sellingPrice, kept above purely
+                // as a display reference of the original listed price).
+                // A line with a discount applied at sale time means the
+                // customer never paid unitPrice for it in the first
+                // place - using it here overstated every discounted
+                // return's value (and could even exceed the sale's own
+                // totalAmount, driving Net Transaction Value negative,
+                // which should never happen for a single fully-returned
+                // item - it should bottom out at exactly 0). finalAmount
+                // is the line's own frozen, already-discounted total for
+                // this one unit (serialized lines are always quantity 1).
+                const lineRefundAmount = round2(saleLine.finalAmount ?? unitPrice);
                 // Only an accessory actually given at sale time
                 // (sale.items[].complimentary) can be marked returned -
                 // a requested checkbox for something never given is
@@ -174,7 +189,7 @@ export const createSaleReturnController = async (req, res) => {
                     serialNumber: saleLine.serialNumber,
                     quantity: 1,
                     unitPrice,
-                    lineRefundAmount: round2(unitPrice),
+                    lineRefundAmount,
                     complimentaryReturned,
                 });
                 serialsToRelease.push(serial);
@@ -210,6 +225,17 @@ export const createSaleReturnController = async (req, res) => {
                 }
 
                 const unitPrice = saleLine.sellingPrice || 0;
+                // Same discount-aware fix as the serialized branch above
+                // (see its own comment) - saleLine.finalAmount is the
+                // frozen, already-discounted total for the line's ENTIRE
+                // original quantity, so it's prorated per unit first
+                // (same "prorate the frozen line total" pattern
+                // getReturnExchangeAdjustments.js's own GST proration
+                // already uses) before scaling to however many units are
+                // actually being returned here.
+                const originalLineQty = saleLine.quantity > 0 ? saleLine.quantity : 1;
+                const perUnitFinal = (saleLine.finalAmount ?? (unitPrice * originalLineQty)) / originalLineQty;
+                const lineRefundAmount = round2(perUnitFinal * requestedQty);
                 returnItems.push({
                     productId: saleLine.productId,
                     productName: saleLine.productName,
@@ -218,7 +244,7 @@ export const createSaleReturnController = async (req, res) => {
                     batchNumber: saleLine.batchNumber,
                     quantity: requestedQty,
                     unitPrice,
-                    lineRefundAmount: round2(unitPrice * requestedQty),
+                    lineRefundAmount,
                 });
                 batchLinesToRelease.push({ saleLine, batchStock, quantity: requestedQty });
             } else {
