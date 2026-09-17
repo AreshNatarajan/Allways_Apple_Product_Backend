@@ -84,13 +84,12 @@ export const updateGstConfigController = async (req, res) => {
             }
         }
 
-        let resolvedInvoice;
+        let resolvedHeaderColor;
         if (invoice !== undefined) {
-            const headerColor = (invoice.headerColor || "").trim().toUpperCase();
-            if (!HEX_COLOR_REGEX.test(headerColor)) {
+            resolvedHeaderColor = (invoice.headerColor || "").trim().toUpperCase();
+            if (!HEX_COLOR_REGEX.test(resolvedHeaderColor)) {
                 return errorResponse(res, "Invoice header color must be a valid hex color (e.g. #1E3C96)", 400);
             }
-            resolvedInvoice = { headerColor };
         }
 
         const config = await getOrCreateGstConfig();
@@ -103,7 +102,14 @@ export const updateGstConfigController = async (req, res) => {
         if (resolvedCurrency) config.currency = { code: resolvedCurrency.code, symbol: resolvedCurrency.symbol };
         if (resolvedPrefixes) config.documentPrefixes = resolvedPrefixes;
         if (resolvedInventory) config.inventory = resolvedInventory;
-        if (resolvedInvoice) config.invoice = resolvedInvoice;
+        // Only ever touches headerColor - signatureImage/signatureImageKey
+        // are set exclusively via the dedicated upload-signature endpoint
+        // (see uploadGstInvoiceSignature.controller.js), same separation
+        // Branch keeps for upiQrImage vs its own general update.
+        // Assigning `config.invoice = {...}` wholesale here would silently
+        // wipe out an already-uploaded signature on every plain color
+        // save - mutate the one subfield instead.
+        if (resolvedHeaderColor !== undefined) config.invoice.headerColor = resolvedHeaderColor;
 
         config.updatedBy = req.user._id;
 

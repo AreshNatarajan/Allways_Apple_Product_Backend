@@ -61,6 +61,18 @@ const gstConfigSchema = new mongoose.Schema(
     // regenerated, so this can never retroactively change one.
     invoice: {
       headerColor: { type: String, default: "#1E3C96", trim: true, uppercase: true },
+
+      // Single company-wide signature image (PNG, for the transparent
+      // background a real signature needs over the invoice's white
+      // page) shown on the Sale invoice in place of the old hand-drawn
+      // SVG squiggle - see Invoice.jsx. SUPER_ADMIN only, set via the
+      // dedicated POST /gst-config/upload-signature endpoint, never via
+      // the general PUT /gst-config/update used for headerColor (same
+      // separation Branch.upiQrImage keeps from the rest of Branch's
+      // own update). `signatureImageKey` is the S3 object key, kept
+      // only so the old file can be deleted when a new one replaces it.
+      signatureImage: { type: String, default: null },
+      signatureImageKey: { type: String, default: null },
     },
 
     // =========================

@@ -29,6 +29,7 @@ export const getSaleByIdController = async (req, res) => {
             .populate("paymentDetails.handledBy.userId", "name email role")
             .populate("handledBy.userId", "name email role")
             .populate("reviewedBy", "name email")
+            .populate("systemInvoiceUpdatedBy", "name email")
             .lean();
 
         if (!sale) {

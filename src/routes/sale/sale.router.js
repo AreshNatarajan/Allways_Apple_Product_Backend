@@ -69,13 +69,21 @@ router.get('/', authMiddleware, getAllSalesController);
 router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), uploadSaleSelfieController);
 
 // Client-generated system invoice (see uploadSaleInvoice.controller.js's
-// own doc comment) - same onlyBranchRoles + sale.create gate as the
-// creation flow it's always part of. Persisting the resulting URL is a
-// SEPARATE, narrower endpoint (setSaleInvoiceFileController below) so
-// setting one field never goes through updateSaleController's much
-// heavier edit-sale side effects.
-router.post('/upload-invoice', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), uploadSaleInvoiceController);
-router.patch('/:id/invoice', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), setSaleInvoiceFileController);
+// own doc comment). Deliberately NOT onlyBranchRoles here, unlike the
+// creation flow it's normally part of - these two are plain "upload a
+// PDF" / "set one URL field" utility endpoints, not a sale-creation
+// action, and Sale Detail's own "Regenerate Invoice" button (NotesCard.jsx)
+// needs a SUPER_ADMIN to be able to reach both too (SUPER_ADMIN already
+// has full read access to any sale's Detail page, and regenerating an
+// older sale's invoice against an updated template is exactly the kind
+// of cross-branch oversight action they're expected to do; they just
+// never create sales in the first place, which onlyBranchRoles still
+// correctly blocks on the actual /create route, untouched). Persisting
+// the resulting URL is a SEPARATE, narrower endpoint
+// (setSaleInvoiceFileController below) so setting one field never goes
+// through updateSaleController's much heavier edit-sale side effects.
+router.post('/upload-invoice', authMiddleware, requirePermission('sale.create'), uploadSaleInvoiceController);
+router.patch('/:id/invoice', authMiddleware, requirePermission('sale.create'), setSaleInvoiceFileController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.

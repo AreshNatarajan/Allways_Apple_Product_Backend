@@ -683,12 +683,29 @@ const salesSchema = new mongoose.Schema(
     // its own invoice template - src/utils/Template/Invoice.jsx - into a
     // PDF and uploads it), not server-side like Purchase's own
     // systemInvoiceFile still is. Set via PATCH /sale/:id/invoice (see
-    // setSaleInvoiceFile.controller.js) - a sale is never re-invoiced,
-    // only ever invoiced once; that endpoint enforces the same guard.
+    // setSaleInvoiceFile.controller.js) - the first-time generation still
+    // only ever happens once per sale; a later `regenerate: true` call on
+    // that same endpoint is the one deliberate exception, letting staff
+    // re-render an older sale's invoice against the CURRENT template
+    // (e.g. after the template itself was updated) without touching any
+    // other field on the sale. systemInvoiceUpdatedBy/At only ever get
+    // stamped by that regenerate path - they stay null for a sale still
+    // on its original, first-generated invoice.
     // ----------------------------------------------------------
 
     systemInvoiceFile: {
       type: String,
+      default: null,
+    },
+
+    systemInvoiceUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    systemInvoiceUpdatedAt: {
+      type: Date,
       default: null,
     },
 
