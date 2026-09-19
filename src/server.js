@@ -70,6 +70,7 @@ import purchasedProductRouter from './routes/purchasedProduct/purchasedProduct.r
 import dashboardRouter from './routes/dashboard/dashboard.router.js'
 import branchRouter from './routes/branch/branch.router.js'
 import reportsRouter from './routes/reports/reports.router.js'
+import analyticsRouter from './routes/analytics/analytics.router.js'
 import PendingReceiveRouter from "./routes/pendingReceives/pendingReceives.router.js";
 // import branchDropdown from './routes/branch/branchDropdown.router.js'
 
@@ -158,6 +159,7 @@ console.log('Branch routes imported successfully');
 app.use('/api/branch', branchRouter)
 console.log('Branch routes mounted at /api/branch');
 app.use('/api/reports', reportsRouter);
+app.use('/api/analytics', analyticsRouter);
 app.use('/api/storefront', storefrontRouter);
 // PUBLIC - no authMiddleware, consumed by shopping-commerce. Kept as
 // its own top-level mount (not nested under /api/storefront) so the
