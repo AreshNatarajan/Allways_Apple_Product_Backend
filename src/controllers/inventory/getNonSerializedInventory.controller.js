@@ -26,7 +26,7 @@ const computeStatus = (qty, threshold) => {
 export const getNonSerializedInventoryController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search = "", status = "", branchId, category, productCode, sortBy, sortOrder } = req.query;
+        const { search = "", status = "", branchId, category, productCode, minPrice, maxPrice, sortBy, sortOrder } = req.query;
         const user = req.user;
 
         const gstConfig = await getOrCreateGstConfig();
@@ -40,7 +40,7 @@ export const getNonSerializedInventoryController = async (req, res) => {
             return successResponse(res, "Non-serialized inventory retrieved successfully", {
                 inventory: [],
                 pagination: { total: 0, page: parseInt(page) || 1, limit: parseInt(limit) || 10, totalPages: 1 },
-                filters: { search: "", status: "ALL", category: "ALL", branchId: "ALL" },
+                filters: { search: "", status: "ALL", category: "ALL", branchId: "ALL", minPrice: "", maxPrice: "" },
             });
         }
         const scopedBranchId = branchScope.scopedBranchId;
@@ -124,6 +124,14 @@ export const getNonSerializedInventoryController = async (req, res) => {
             grouped = grouped.filter((g) => g.status === status);
         }
 
+        // sellingPrice here is the derived "latest batch" price computed
+        // above, not a direct schema field - filtered post-grouping,
+        // same reasoning as the status filter just above.
+        const minPriceNum = minPrice && !Number.isNaN(Number(minPrice)) ? Number(minPrice) : null;
+        const maxPriceNum = maxPrice && !Number.isNaN(Number(maxPrice)) ? Number(maxPrice) : null;
+        if (minPriceNum !== null) grouped = grouped.filter((g) => g.sellingPrice >= minPriceNum);
+        if (maxPriceNum !== null) grouped = grouped.filter((g) => g.sellingPrice <= maxPriceNum);
+
         // ---- sort (grouped/derived data, so this is a plain JS sort,
         // not a Mongo-level one) ----
         const sortDir = sortOrder === "asc" ? 1 : -1;
@@ -164,6 +172,7 @@ export const getNonSerializedInventoryController = async (req, res) => {
                 category: category || "ALL",
                 branchId: branchId || "ALL",
                 productCode: productCode || "",
+                minPrice: minPrice || "", maxPrice: maxPrice || "",
                 sortBy: sortBy || "",
                 sortOrder: sortOrder || "desc",
             },

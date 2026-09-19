@@ -36,7 +36,7 @@ const IN_MEMORY_SORT_FIELDS = new Set(["productName", "vendorName", "modelNumber
 export const getSerializedInventoryController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search = "", status = "", branchId, category, vendorId, modelNumber, startDate, endDate, sortBy, sortOrder } = req.query;
+        const { search = "", status = "", branchId, category, series, vendorId, modelNumber, minPrice, maxPrice, startDate, endDate, sortBy, sortOrder } = req.query;
         const user = req.user;
         const canViewCost = canViewInventoryCost(user.role);
 
@@ -48,7 +48,7 @@ export const getSerializedInventoryController = async (req, res) => {
             return successResponse(res, "Serialized inventory retrieved successfully", {
                 inventory: [],
                 pagination: { total: 0, page: parseInt(page) || 1, limit: parseInt(limit) || 10, totalPages: 1 },
-                filters: { search: "", status: "ALL", category: "ALL", branchId: "ALL" },
+                filters: { search: "", status: "ALL", category: "ALL", series: "ALL", branchId: "ALL", minPrice: "", maxPrice: "" },
             });
         }
         const scopedBranchId = branchScope.scopedBranchId;
@@ -66,8 +66,24 @@ export const getSerializedInventoryController = async (req, res) => {
             filter.status = status;
         }
 
+        // Selling price - the one price field every role can see (unlike
+        // purchasePrice, which is SUPER_ADMIN-only) - a direct field on
+        // ProductSerial, filtered at the query level like any other.
+        if (minPrice || maxPrice) {
+            filter.sellingPrice = {};
+            if (minPrice && !Number.isNaN(Number(minPrice))) filter.sellingPrice.$gte = Number(minPrice);
+            if (maxPrice && !Number.isNaN(Number(maxPrice))) filter.sellingPrice.$lte = Number(maxPrice);
+        }
+
         if (category && category !== "ALL") {
-            const categoryProducts = await Product.find({ category }).select("_id").lean();
+            // Series (Product.nameParts.series, e.g. AIR/PRO/MAX for
+            // LAPTOP, BASIC/AIR/PRO/PRO MAX for MOBILE - see
+            // createProduct.controller.js) only exists on those two
+            // categories, so it's applied here as a narrowing condition
+            // on the same category lookup, never as its own separate filter.
+            const productQuery = { category };
+            if (series && series.trim() !== "") productQuery["nameParts.series"] = series.trim().toUpperCase();
+            const categoryProducts = await Product.find(productQuery).select("_id").lean();
             filter.productId = { $in: categoryProducts.map((p) => p._id) };
         }
 
@@ -213,8 +229,9 @@ export const getSerializedInventoryController = async (req, res) => {
             inventory,
             pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages },
             filters: {
-                search: search || "", status: status || "ALL", category: category || "ALL",
+                search: search || "", status: status || "ALL", category: category || "ALL", series: series || "ALL",
                 branchId: branchId || "ALL", vendorId: vendorId || "ALL", modelNumber: modelNumber || "",
+                minPrice: minPrice || "", maxPrice: maxPrice || "",
                 startDate: startDate || "", endDate: endDate || "",
                 sortBy: sortBy || "", sortOrder: sortOrder || "desc",
             },
