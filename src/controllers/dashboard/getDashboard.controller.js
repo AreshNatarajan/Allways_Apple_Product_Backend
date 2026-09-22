@@ -13,6 +13,7 @@ import PendingReceive from "../../models/PendingReceive.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { getReturnExchangeAdjustmentRows, sumAdjustmentRows, bucketAdjustmentRowsByDay } from "../../services/reports/getReturnExchangeAdjustments.js";
+import { getTrendStart, keyFnFor } from "../../services/dashboard/trendBucketing.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 /**
@@ -206,11 +207,9 @@ export const getDashboardController = async (req, res) => {
             kpis: {
                 today: kpisToday,
                 overview: {
-                    totalProducts: summary.totalProducts,
-                    inventoryValue: round2(stockOverview.purchaseValue),
                     lowStockProducts: stockOverview.lowStockCount,
-                    pendingReceives: summary.pendingReceives,
-                    pendingPayments: round2(pendingPayments.total),
+                    salePendingPayments: round2(pendingPayments.salePending),
+                    purchasePendingPayments: round2(pendingPayments.purchasePending),
                 },
             },
             profitSummary,
@@ -220,11 +219,8 @@ export const getDashboardController = async (req, res) => {
             paymentStatus,
             paymentMethodStats,
             inventoryOverview: {
-                serializedProducts: stockOverview.serializedProducts,
-                nonSerializedProducts: stockOverview.nonSerializedProducts,
                 availableSerials: stockOverview.availableSerials,
-                soldSerials: stockOverview.soldSerials,
-                pendingReceive: summary.pendingReceives,
+                availableNonSerialQuantity: stockOverview.availableNonSerialQuantity,
                 transferPending: summary.pendingTransfers,
             },
             lowStockWidget: stockOverview.lowStockWidget,
@@ -234,11 +230,9 @@ export const getDashboardController = async (req, res) => {
             branchComparison,
             recentSales: await getRecentSales(saleBranchMatch),
             recentPurchases: await getRecentPurchases(purchaseBranchMatch),
-            pendingReceivesList: await getPendingReceivesList(branchObjectId, 15),
             alertsPanel: {
                 lowStock: stockOverview.lowStockCount,
                 outOfStock: stockOverview.outOfStockCount,
-                pendingReceives: summary.pendingReceives,
                 pendingPayments: round2(pendingPayments.total),
                 largeOutstandingCustomers,
                 transferPending: summary.pendingTransfers,
@@ -295,39 +289,6 @@ const getDateFilter = (period) => {
         default: return null;
     }
 };
-
-const TREND_RANGE_CONFIG = {
-    today: { days: 0, granularity: "hour" },
-    "7d": { days: 7, granularity: "day" },
-    "30d": { days: 30, granularity: "day" },
-    "3m": { days: 90, granularity: "week" },
-    "6m": { days: 180, granularity: "week" },
-    "1y": { days: 365, granularity: "month" },
-};
-
-const getTrendStart = (range) => {
-    const config = TREND_RANGE_CONFIG[range] || TREND_RANGE_CONFIG["30d"];
-    const start = new Date();
-    if (config.days === 0) {
-        start.setHours(0, 0, 0, 0);
-    } else {
-        start.setDate(start.getDate() - config.days);
-    }
-    return { start, granularity: config.granularity };
-};
-
-const hourKey = (d) => new Date(d).toISOString().slice(0, 13) + ":00";
-const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
-const weekKey = (d) => {
-    const date = new Date(d);
-    const firstDayOfWeek = new Date(date);
-    firstDayOfWeek.setDate(date.getDate() - date.getDay());
-    return firstDayOfWeek.toISOString().slice(0, 10);
-};
-const monthKey = (d) => new Date(d).toISOString().slice(0, 7);
-
-const keyFnFor = (granularity) =>
-    granularity === "hour" ? hourKey : granularity === "day" ? dayKey : granularity === "week" ? weekKey : monthKey;
 
 // ============================================================
 // 📊 SUMMARY (existing key, bug-fixed)
@@ -521,6 +482,12 @@ const getProfitSummary = async (saleBranchMatch, adjustmentRows = []) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Previous calendar month, e.g. August 1-31 while "thisMonth" is
+    // September - a CLOSED range (unlike every other bucket here, which
+    // is "since X, still counting up to now"), so this one needs its
+    // own $lt upper bound and its own adjustment-row filter rather than
+    // reusing sumAdjustmentsSince (open-ended by design).
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
     const [result] = await Sale.aggregate([
@@ -529,6 +496,10 @@ const getProfitSummary = async (saleBranchMatch, adjustmentRows = []) => {
             $facet: {
                 today: [{ $match: { saleDate: { $gte: todayStart } } }, { $group: { _id: null, profit: { $sum: "$totalProfit" } } }],
                 thisMonth: [{ $match: { saleDate: { $gte: monthStart } } }, { $group: { _id: null, profit: { $sum: "$totalProfit" } } }],
+                previousMonth: [
+                    { $match: { saleDate: { $gte: previousMonthStart, $lt: monthStart } } },
+                    { $group: { _id: null, profit: { $sum: "$totalProfit" } } },
+                ],
                 thisYear: [{ $match: { saleDate: { $gte: yearStart } } }, { $group: { _id: null, profit: { $sum: "$totalProfit" } } }],
                 overall: [{ $group: { _id: null, profit: { $sum: "$totalProfit" } } }],
             },
@@ -536,9 +507,13 @@ const getProfitSummary = async (saleBranchMatch, adjustmentRows = []) => {
     ]);
 
     const pick = (arr, adj) => round2((arr?.[0]?.profit || 0) + adj.profitAdjustment);
+    const previousMonthAdjustments = sumAdjustmentRows(
+        adjustmentRows.filter((r) => new Date(r.date) >= previousMonthStart && new Date(r.date) < monthStart)
+    );
     return {
         today: pick(result.today, sumAdjustmentsSince(adjustmentRows, todayStart)),
         thisMonth: pick(result.thisMonth, sumAdjustmentsSince(adjustmentRows, monthStart)),
+        previousMonth: pick(result.previousMonth, previousMonthAdjustments),
         thisYear: pick(result.thisYear, sumAdjustmentsSince(adjustmentRows, yearStart)),
         overall: pick(result.overall, sumAdjustmentsSince(adjustmentRows, null)),
     };
@@ -713,7 +688,9 @@ const getPendingPayments = async (saleBranchMatch, purchaseBranchMatch) => {
             { $group: { _id: null, total: { $sum: "$pendingAmount" } } },
         ]),
     ]);
-    return { total: (saleAgg?.total || 0) + (purchaseAgg?.total || 0) };
+    const salePending = saleAgg?.total || 0;
+    const purchasePending = purchaseAgg?.total || 0;
+    return { total: salePending + purchasePending, salePending, purchasePending };
 };
 
 const getLargeOutstandingCustomers = async (saleBranchMatch) => {
@@ -744,14 +721,12 @@ const getStockOverview = async (branchObjectId, thresholds) => {
     const batchFilter = { status: { $ne: "CANCELLED" } };
     if (branchObjectId) batchFilter.branchId = branchObjectId;
 
-    const [serials, batchStocks, serializedProducts, nonSerializedProducts] = await Promise.all([
+    const [serials, batchStocks] = await Promise.all([
         ProductSerial.find(serialFilter).select("productId status purchasePrice sellingPrice").lean(),
         BatchStock.find(batchFilter).select("productId availableQuantity purchasePrice sellingPrice status").lean(),
-        Product.countDocuments({ isSerialized: true, isActive: true, isDeleted: false }),
-        Product.countDocuments({ isSerialized: false, isActive: true, isDeleted: false }),
     ]);
 
-    let availableSerials = 0, soldSerials = 0, purchaseValue = 0;
+    let availableSerials = 0, purchaseValue = 0;
     const serialAvailByProduct = new Map();
     const serializedProductIds = new Set();
 
@@ -763,15 +738,23 @@ const getStockOverview = async (branchObjectId, thresholds) => {
             purchaseValue += s.purchasePrice || 0;
             if (key) serialAvailByProduct.set(key, (serialAvailByProduct.get(key) || 0) + 1);
         }
-        if (s.status === "SOLD") soldSerials++;
     }
 
+    // Total available UNITS across non-serialized batches (not a
+    // product count) - the direct counterpart to availableSerials above,
+    // so the two "Available" figures on the Dashboard mean the same
+    // kind of thing (physical units currently sellable), not products
+    // vs. units.
+    let availableNonSerialQuantity = 0;
     const batchAvailByProduct = new Map();
     const nonSerializedProductIds = new Set();
     for (const b of batchStocks) {
         const key = b.productId?.toString();
         if (key) nonSerializedProductIds.add(key);
-        if (b.status === "ACTIVE") purchaseValue += (b.availableQuantity || 0) * (b.purchasePrice || 0);
+        if (b.status === "ACTIVE") {
+            purchaseValue += (b.availableQuantity || 0) * (b.purchasePrice || 0);
+            availableNonSerialQuantity += b.availableQuantity || 0;
+        }
         if (key) batchAvailByProduct.set(key, (batchAvailByProduct.get(key) || 0) + (b.availableQuantity || 0));
     }
 
@@ -794,27 +777,38 @@ const getStockOverview = async (branchObjectId, thresholds) => {
 
     const widgetIds = lowStockProductIds.slice(0, 20).map((x) => x.productId).filter(Boolean);
     const products = widgetIds.length
-        ? await Product.find({ _id: { $in: widgetIds } }).select("name").lean()
+        ? await Product.find({ _id: { $in: widgetIds } }).select("name modelNumber productCode").lean()
         : [];
-    const nameMap = new Map(products.map((p) => [p._id.toString(), p.name]));
+    const productMap = new Map(products.map((p) => [p._id.toString(), p]));
 
-    const lowStockWidget = lowStockProductIds.slice(0, 20).map(({ productId, qty, isSerialized }) => ({
-        productId,
-        productName: nameMap.get(productId) || "Unknown Product",
-        availableQty: qty,
-        minimumLevel: isSerialized ? serializedLowStockThreshold : nonSerializedLowStockThreshold,
-        status: qty === 0 ? "OUT_OF_STOCK" : "LOW_STOCK",
-    }));
+    // modelNumber (serialized)/productCode (non-serialized) are included
+    // purely so the Dashboard's Low Stock widget can deep-link to an
+    // EXACT single product on the Inventory list (both are the real
+    // exact-match filter params getSerializedInventory/
+    // getNonSerializedInventory already support) - there's no
+    // productId filter on either endpoint, so this is the precise
+    // identifier each one actually understands.
+    const lowStockWidget = lowStockProductIds.slice(0, 20).map(({ productId, qty, isSerialized }) => {
+        const product = productMap.get(productId);
+        return {
+            productId,
+            productName: product?.name || "Unknown Product",
+            modelNumber: product?.modelNumber || "",
+            productCode: product?.productCode || "",
+            isSerialized,
+            availableQty: qty,
+            minimumLevel: isSerialized ? serializedLowStockThreshold : nonSerializedLowStockThreshold,
+            status: qty === 0 ? "OUT_OF_STOCK" : "LOW_STOCK",
+        };
+    });
 
     return {
         availableSerials,
-        soldSerials,
+        availableNonSerialQuantity,
         purchaseValue,
         lowStockCount,
         outOfStockCount,
         lowStockWidget,
-        serializedProducts,
-        nonSerializedProducts,
     };
 };
 
@@ -875,7 +869,27 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
             cEntry.quantity += qty;
 
             const pKey = (item.productId?._id || item.productId)?.toString() || item.productName;
-            if (!productMap.has(pKey)) productMap.set(pKey, { productId: item.productId?._id || item.productId || null, productName: item.productName || "Unknown Product", soldQty: 0, revenue: 0, profit: 0 });
+            if (!productMap.has(pKey)) {
+                // modelNumber/productCode/isSerialized are already flat
+                // fields on Sale.items[] (no extra lookup) - included
+                // purely so the Dashboard's Top Selling Products table
+                // can deep-link to the Sale list filtered to exactly
+                // this product (modelNumber is that list's own real
+                // exact-ish filter param for a serialized product; a
+                // non-serialized one has no equivalent, so productCode
+                // rides along on `search` instead - see
+                // TopSellingProductsTable.jsx).
+                productMap.set(pKey, {
+                    productId: item.productId?._id || item.productId || null,
+                    productName: item.productName || "Unknown Product",
+                    modelNumber: item.modelNumber || "",
+                    productCode: item.productCode || "",
+                    isSerialized: !!item.isSerialized,
+                    soldQty: 0,
+                    revenue: 0,
+                    profit: 0,
+                });
+            }
             const pEntry = productMap.get(pKey);
             pEntry.soldQty += qty;
             pEntry.revenue += item.finalAmount || 0;
