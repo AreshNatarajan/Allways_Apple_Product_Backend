@@ -11,6 +11,9 @@ import Vendor from "../../models/Vendor.modal.js";
 import Transfer from "../../models/Transfer.modal.js";
 import PendingReceive from "../../models/PendingReceive.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
+import SaleReturn from "../../models/SaleReturn.modal.js";
+import SaleExchange from "../../models/SaleExchange.modal.js";
+import PurchaseReturn from "../../models/PurchaseReturn.modal.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { getReturnExchangeAdjustmentRows, sumAdjustmentRows, bucketAdjustmentRowsByDay } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { getTrendStart, keyFnFor } from "../../services/dashboard/trendBucketing.js";
@@ -1142,6 +1145,18 @@ const getPendingTransfersList = async (branchObjectId) => {
 // anywhere - never fabricated).
 // ============================================================
 
+// Reference types whose own document id IS the detail page's URL param
+// directly - no extra lookup needed (confirmed by grepping every real
+// recordStockMovement() call site for its referenceType/referenceId
+// pairing across the whole backend).
+const REFERENCE_ROUTE = {
+    Sale: (id) => `/sale/${id}`,
+    Purchase: (id) => `/purchases/${id}`,
+    Transfer: (id) => `/transfers/${id}`,
+    Service: (id) => `/service/${id}`,
+    ReceiveHistory: (id) => `/receive-history/${id}`,
+};
+
 const getRecentActivities = async (branchObjectId) => {
     const filter = branchObjectId ? { branchId: branchObjectId } : {};
     const movements = await StockMovement.find(filter)
@@ -1149,14 +1164,52 @@ const getRecentActivities = async (branchObjectId) => {
         .limit(20)
         .lean();
 
-    return movements.map((m) => ({
-        type: m.type,
-        message: buildActivityMessage(m),
-        timestamp: m.performedAt,
-        performedByName: m.performedByName || "",
-        referenceType: m.referenceType,
-        referenceId: m.referenceId,
-    }));
+    // SaleReturn/SaleExchange/PurchaseReturn have no detail page of
+    // their own - they're shown embedded within their parent Sale/
+    // Purchase Detail page instead (same convention
+    // ProfitTrendDetailModal.jsx already uses for its own Return/
+    // Exchange rows), so a movement referencing one of these links to
+    // the PARENT record. One small batched lookup per type here, not a
+    // query per row.
+    const saleReturnIds = movements.filter((m) => m.referenceType === "SaleReturn").map((m) => m.referenceId);
+    const saleExchangeIds = movements.filter((m) => m.referenceType === "SaleExchange").map((m) => m.referenceId);
+    const purchaseReturnIds = movements.filter((m) => m.referenceType === "PurchaseReturn").map((m) => m.referenceId);
+
+    const [saleReturns, saleExchanges, purchaseReturns] = await Promise.all([
+        saleReturnIds.length ? SaleReturn.find({ _id: { $in: saleReturnIds } }).select("saleId").lean() : [],
+        saleExchangeIds.length ? SaleExchange.find({ _id: { $in: saleExchangeIds } }).select("saleId").lean() : [],
+        purchaseReturnIds.length ? PurchaseReturn.find({ _id: { $in: purchaseReturnIds } }).select("purchaseId").lean() : [],
+    ]);
+    const saleIdByReturn = new Map(saleReturns.map((r) => [r._id.toString(), r.saleId?.toString()]));
+    const saleIdByExchange = new Map(saleExchanges.map((r) => [r._id.toString(), r.saleId?.toString()]));
+    const purchaseIdByReturn = new Map(purchaseReturns.map((r) => [r._id.toString(), r.purchaseId?.toString()]));
+
+    return movements.map((m) => {
+        const id = m.referenceId?.toString();
+        let linkPath = null;
+        if (m.referenceType === "SaleReturn") {
+            const saleId = saleIdByReturn.get(id);
+            if (saleId) linkPath = `/sale/${saleId}`;
+        } else if (m.referenceType === "SaleExchange") {
+            const saleId = saleIdByExchange.get(id);
+            if (saleId) linkPath = `/sale/${saleId}`;
+        } else if (m.referenceType === "PurchaseReturn") {
+            const purchaseId = purchaseIdByReturn.get(id);
+            if (purchaseId) linkPath = `/purchases/${purchaseId}`;
+        } else if (id && REFERENCE_ROUTE[m.referenceType]) {
+            linkPath = REFERENCE_ROUTE[m.referenceType](id);
+        }
+
+        return {
+            type: m.type,
+            message: buildActivityMessage(m),
+            timestamp: m.performedAt,
+            performedByName: m.performedByName || "",
+            referenceType: m.referenceType,
+            referenceId: m.referenceId,
+            linkPath,
+        };
+    });
 };
 
 const buildActivityMessage = (m) => {
