@@ -23,6 +23,7 @@ import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIn
 import { getSaleItemBySerialController } from '../../controllers/sale/getSaleItemBySerial.controller.js';
 import { uploadSaleInvoiceController } from '../../controllers/sale/uploadSaleInvoice.controller.js';
 import { setSaleInvoiceFileController } from '../../controllers/sale/setSaleInvoiceFile.controller.js';
+import { downloadSaleInvoiceController } from '../../controllers/sale/downloadSaleInvoice.controller.js';
 
 import { statsSaleController } from '../../controllers/sale/statsSale.controller.js'
 
@@ -84,6 +85,12 @@ router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission
 // through updateSaleController's much heavier edit-sale side effects.
 router.post('/upload-invoice', authMiddleware, requirePermission('sale.create'), uploadSaleInvoiceController);
 router.patch('/:id/invoice', authMiddleware, requirePermission('sale.create'), setSaleInvoiceFileController);
+
+// Plain read action (same access level as GET /:id below) - streams the
+// already-generated invoice PDF back with a real Content-Disposition
+// filename, see downloadSaleInvoice.controller.js for why this can't
+// just be a direct S3 URL fetch from the browser.
+router.get('/:id/invoice/download', authMiddleware, downloadSaleInvoiceController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.

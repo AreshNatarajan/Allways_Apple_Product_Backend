@@ -423,6 +423,7 @@ const salesSchema = new mongoose.Schema(
       name: { type: String, default: "" },
       mobile: { type: String, default: "" },
       email: { type: String, default: "" },
+      address: { type: String, default: "" },
       gstNumber: { type: String, default: "" },
     },
 
