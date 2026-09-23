@@ -167,6 +167,7 @@ export const updateSaleController = async (req, res) => {
                 name: customer.name || "",
                 mobile: customer.mobile || "",
                 email: customer.email || "",
+                address: customer.address || "",
                 gstNumber: customer.gstNumber || "",
             };
         }

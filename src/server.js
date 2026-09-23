@@ -37,7 +37,12 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: allowedOrigins,
-    credentials: true
+    credentials: true,
+    // Content-Disposition isn't in the CORS response-header safelist, so
+    // without this the browser silently withholds it from JS (fetch/axios
+    // reads an empty header) even though the server sent it - breaks
+    // downloadSaleInvoiceController's custom filename entirely.
+    exposedHeaders: ["Content-Disposition"],
 }));
 
 
