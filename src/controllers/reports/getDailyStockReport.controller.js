@@ -11,14 +11,18 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  * deliberately excluded here, per the feature's own scope). Unlike
  * getInOutReport.controller.js (a movement register over a date
  * range), this has no date range at all - it's always "what's
- * AVAILABLE right now", grouped by configuration.
+ * AVAILABLE right now". Count-based: one row per physical AVAILABLE
+ * unit, not grouped/aggregated by product.
  *
- * "Configuration" groups on the unit's Product master (productId), and
- * displays that product's `name` - never ProductSerial.description
- * (that's a per-unit condition/cosmetic note, not the product identity).
- * Grouping by productId rather than by the name string itself means two
- * distinct products that happen to share the same display name are
- * still counted as separate rows, not silently merged.
+ * "Configuration" is that UNIT's own `description.main` (the per-unit
+ * condition/cosmetic note entered at Purchase time - e.g. "mint
+ * condition", "small scratch on lid") - never the shared Product name,
+ * since two units of the same product can genuinely read differently
+ * here. Falls back to the product's own name only when staff left that
+ * per-unit description blank, same fallback convention already used for
+ * the Sale Invoice's line-item description (buildSaleInvoiceData).
+ * `sellingPrice` is this unit's own current asking price, not a batch
+ * average - both real ProductSerial fields, nothing computed.
  *
  * Role: any authenticated role, same as /in-out (a stock list, not a
  * financial report - no purchase price/cost ever included). SUPER_ADMIN
@@ -60,15 +64,19 @@ export const getDailyStockReportController = async (req, res) => {
             },
             { $unwind: "$product" },
             { $match: { "product.isDeleted": false } },
+            { $sort: { "product.name": 1, serialNumber: 1 } },
             {
-                $group: {
-                    _id: "$productId",
-                    configuration: { $first: "$product.name" },
-                    qty: { $sum: 1 },
+                $project: {
+                    _id: 0,
+                    configuration: {
+                        $let: {
+                            vars: { desc: { $ifNull: ["$description.main", ""] } },
+                            in: { $cond: [{ $ne: ["$$desc", ""] }, "$$desc", "$product.name"] },
+                        },
+                    },
+                    sellingPrice: { $ifNull: ["$sellingPrice", 0] },
                 },
             },
-            { $sort: { configuration: 1 } },
-            { $project: { _id: 0, configuration: 1, qty: 1 } },
         ]);
 
         return successResponse(res, "Daily stock report retrieved successfully", {
