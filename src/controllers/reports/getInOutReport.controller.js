@@ -208,6 +208,22 @@ const getOutRows = async ({ dateRange, branchMatch }) => {
             },
         },
         { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+        // customerSnapshot is only ever stamped on customer REASSIGNMENT
+        // during Sale Edit (see updateSale.controller.js) - never at
+        // Sale creation - so for the vast majority of (never-edited)
+        // sales it's empty, and reading it alone left this report's
+        // Customer Name/Contact columns blank for almost every row. Same
+        // snapshot-first, live-Customer-fallback pattern already used by
+        // the invoice generator (buildSaleInvoiceData).
+        {
+            $lookup: {
+                from: "customers",
+                localField: "customerId",
+                foreignField: "_id",
+                as: "customer",
+            },
+        },
+        { $unwind: { path: "$customer", preserveNullAndEmptyArrays: true } },
         {
             $project: {
                 _id: 0,
@@ -232,8 +248,18 @@ const getOutRows = async ({ dateRange, branchMatch }) => {
                 // actual recorded sale amount, not the pre-adjustment
                 // unit sellingPrice.
                 saleAmount: { $ifNull: ["$items.finalAmount", 0] },
-                customerName: { $ifNull: ["$customerSnapshot.name", ""] },
-                customerContact: { $ifNull: ["$customerSnapshot.mobile", ""] },
+                customerName: {
+                    $let: {
+                        vars: { snap: { $ifNull: ["$customerSnapshot.name", ""] } },
+                        in: { $cond: [{ $ne: ["$$snap", ""] }, "$$snap", { $ifNull: ["$customer.name", ""] }] },
+                    },
+                },
+                customerContact: {
+                    $let: {
+                        vars: { snap: { $ifNull: ["$customerSnapshot.mobile", ""] } },
+                        in: { $cond: [{ $ne: ["$$snap", ""] }, "$$snap", { $ifNull: ["$customer.mobile", ""] }] },
+                    },
+                },
                 paymentStatus: 1,
                 profit: { $ifNull: ["$items.profit", 0] },
                 // Row metadata only - never rendered as a spreadsheet
