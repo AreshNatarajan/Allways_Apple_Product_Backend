@@ -35,6 +35,15 @@ export const getPurchaseByIdController = async (req, res) => {
             .populate("createdBy", "name email")
             .populate("updatedBy", "name email")
             .populate("reviewedBy", "name email")
+            .populate("systemInvoiceUpdatedBy", "name email")
+            // The purchase's OWN destination branch (BRANCH-type direct-
+            // receive only, null for CENTRAL) - needed for the system
+            // invoice's company-header address/phone/email (see
+            // generatePurchaseInvoicePdf.js's buildPurchaseInvoiceData).
+            // Distinct from every other "branchId" populate below, which
+            // are all on sub-documents (ProductSerial/BatchStock/etc), not
+            // this top-level field.
+            .populate("branchId", "name address phones email")
             .populate("items.productId", "name productCode category isSerialized hsnCode description modelNumber")
             .populate("paymentDetails.handledBy.userId", "name email")
             .lean();

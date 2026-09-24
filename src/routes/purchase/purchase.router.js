@@ -3,6 +3,7 @@ const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
+import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
 import requirePermission from '../../middleware/requirePermission.js';
 
 // 1. Change the requires to modern imports
@@ -18,6 +19,8 @@ import { getPurchaseReturnsController } from '../../controllers/purchase/getPurc
 import { statsPurchaseController } from '../../controllers/purchase/statsPurchase.controller.js';
 
 import { uploadPurchaseInvoiceController } from '../../controllers/purchase/uploadPurchaseInvoice.controller.js'
+import { uploadPurchaseSystemInvoiceController } from '../../controllers/purchase/uploadPurchaseSystemInvoice.controller.js'
+import { setPurchaseInvoiceFileController } from '../../controllers/purchase/setPurchaseInvoiceFile.controller.js'
 
 import { checkSerialNumberController } from '../../controllers/purchase/checkSerialNumberExist.controller.js'
 import { getPurchaseItemBySerialController } from '../../controllers/purchase/getPurchaseItemBySerial.controller.js'
@@ -91,12 +94,27 @@ router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewPurchaseContro
 router.post('/:id/return', authMiddleware, requirePermission('purchase.return'), createPurchaseReturnController);
 router.get('/:id/returns', authMiddleware, getPurchaseReturnsController);
 router.get('/:id', authMiddleware, getPurchaseByIdController);
-// SUPER_ADMIN always passes (fixed access); BRANCH_ADMIN/STAFF need the
-// matching per-user grant (requirePermission - see config/permissionCatalog.js),
-// which defaults to true for both today - matches createPurchase.controller.js's
-// isBranchFlow handling, which treats STAFF the same as BRANCH_ADMIN
-// (direct purchase into their own branch) - but can be individually revoked.
-router.post('/create', authMiddleware, requirePermission('purchase.create'), createPurchaseController);
+// Client-generated system invoice (see
+// uploadPurchaseSystemInvoice.controller.js's own doc comment) - same
+// two-call shape as Sale's own upload-invoice + PATCH /:id/invoice pair.
+// Deliberately NOT onlyBranchRoles, unlike /create - a plain "(re)render
+// this one purchase's invoice" utility action, not a purchase-creation
+// step. SUPER_ADMIN can't create a purchase anymore but still has full
+// read access to any purchase's Detail page, and generating/regenerating
+// its invoice for oversight/documentation is exactly the kind of action
+// they're expected to do - same reasoning as sale.router.js's own
+// /:id/invoice.
+router.post('/upload-system-invoice', authMiddleware, requirePermission('purchase.create'), uploadPurchaseSystemInvoiceController);
+router.patch('/:id/invoice', authMiddleware, requirePermission('purchase.create'), setPurchaseInvoiceFileController);
+// onlyBranchRoles hard-blocks SUPER_ADMIN here (same as sale.router.js's
+// own /create) - SUPER_ADMIN keeps full read access below (list/detail/
+// stats, for oversight) but never creates a purchase directly. BRANCH_ADMIN/
+// STAFF still need the matching per-user grant (requirePermission - see
+// config/permissionCatalog.js), which defaults to true for both today -
+// matches createPurchase.controller.js's isBranchFlow handling, which
+// treats STAFF the same as BRANCH_ADMIN (direct purchase into their own
+// branch) - but can be individually revoked.
+router.post('/create', authMiddleware, onlyBranchRoles, requirePermission('purchase.create'), createPurchaseController);
 // Same pattern as create - updatePurchaseController still resets EOD
 // review for a non-SUPER_ADMIN editor regardless, this only gates
 // whether they can reach the edit at all.

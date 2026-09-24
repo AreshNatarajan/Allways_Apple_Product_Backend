@@ -236,6 +236,18 @@ const purchaseSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Set only when the invoice is explicitly RE-generated (never on the
+    // first generation) - same "who/when regenerated" audit pair Sale
+    // keeps (Sale.modal.js's own systemInvoiceUpdatedBy/At).
+    systemInvoiceUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    systemInvoiceUpdatedAt: {
+      type: Date,
+      default: null,
+    },
     purchaseDate: {
       type: Date,
       default: Date.now,
