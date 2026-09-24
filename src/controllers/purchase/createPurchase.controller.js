@@ -2,7 +2,6 @@
 import mongoose from "mongoose";
 import Purchase from "../../models/Purchase.modal.js";
 import Vendor from "../../models/Vendor.modal.js";
-import { generatePurchaseInvoicePdf } from "../../services/purchase/generatePurchaseInvoicePdf.js";
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import {
@@ -355,54 +354,17 @@ export const createPurchaseController = async (req, res) => {
         session.endSession();
 
         // ============================================================
-        // 17. GENERATE SYSTEM INVOICE PDF + UPLOAD TO S3 (after the
-        // transaction commits - PDF/S3 failure must never fail or roll
-        // back the purchase itself; the stock movement and financial
-        // record are what matter most)
+        // 17. POPULATE RESPONSE
         // ============================================================
-
-        let systemInvoiceUrl = null;
-        try {
-            const populatedPurchase = await Purchase.findById(purchase._id)
-                .populate("vendorId", "name phone email address")
-                .populate("items.productId", "name productCode isSerialized hsnCode description modelNumber")
-                .populate("createdBy", "name email")
-                // Branch is only set for a direct-receive (BRANCH_ADMIN)
-                // purchase - a CENTRAL purchase has no single physical
-                // location to print, so this stays null there and the
-                // PDF generator falls back to a generic header.
-                .populate("branchId", "name address phones email");
-
-            // Model Number lives on the Product master, not on
-            // Purchase.items itself - flattened here as a display-only,
-            // in-memory enrichment of the object handed to the PDF
-            // renderer (does not touch the persisted Purchase document,
-            // its schema, or any calculation).
-            const purchaseForInvoice = populatedPurchase.toObject();
-            purchaseForInvoice.items = purchaseForInvoice.items.map((item) => ({
-                ...item,
-                modelNumber: item.productId?.modelNumber || "",
-            }));
-
-            // Never overwrite an existing invoice - this is a brand new
-            // purchase so systemInvoiceFile is always null here, but the
-            // guard inside the service is the real enforcement.
-            const { url } = await generatePurchaseInvoicePdf(
-                purchaseForInvoice
-            );
-
-            systemInvoiceUrl = url;
-
-            purchase.systemInvoiceFile = systemInvoiceUrl;
-            await purchase.save();
-
-        } catch (pdfError) {
-            console.error("System Invoice PDF/S3 Error:", pdfError);
-        }
-
-        // ============================================================
-        // 18. POPULATE RESPONSE
-        // ============================================================
+        // System invoice is NOT generated here anymore - it used to be
+        // auto-generated right after every purchase, but that meant a
+        // PDF got created (and S3-stored) for purchases nobody ever
+        // needed to send/print. It's now purely on-demand: staff opens
+        // Purchase Detail and clicks "Create Invoice" only if they
+        // actually need one (see generatePurchaseInvoice.controller.js,
+        // PATCH /purchase/:id/invoice) - same on-demand model as Sale's
+        // own "Regenerate Invoice" action, just also covering the FIRST
+        // generation here, not only re-generation.
 
         const finalPurchase = await Purchase.findById(purchase._id)
             .populate("vendorId", "name email phone address")
@@ -416,14 +378,10 @@ export const createPurchaseController = async (req, res) => {
                 : [])).size;
             const centralBatchCount = centralBatchesByGroupKey.size;
             const batchNote = centralBatchCount > 0 ? ` ${centralBatchCount} batch(es) created and ready for labeling.` : "";
-            message = systemInvoiceUrl
-                ? `Purchase created successfully. System invoice generated. Items assigned to ${branchCount} branch(es).${batchNote}`
-                : `Purchase created successfully. Items assigned to ${branchCount} branch(es). System invoice generation failed.${batchNote}`;
+            message = `Purchase created successfully. Items assigned to ${branchCount} branch(es).${batchNote}`;
         } else {
             const batchCount = createdBatches.length;
-            message = systemInvoiceUrl
-                ? `Purchase created successfully. ${batchCount} batch(es) created. System invoice generated.`
-                : `Purchase created successfully. ${batchCount} batch(es) created. System invoice generation failed.`;
+            message = `Purchase created successfully. ${batchCount} batch(es) created.`;
         }
 
         return successResponse(
@@ -434,9 +392,6 @@ export const createPurchaseController = async (req, res) => {
                 vendorInvoice: finalPurchase.invoiceFile ? {
                     fileName: finalPurchase.invoiceFile,
                     url: finalPurchase.invoiceFile,
-                } : null,
-                systemInvoice: systemInvoiceUrl ? {
-                    url: systemInvoiceUrl,
                 } : null,
                 ...(isDirectReceive && createdBatches.length > 0 && {
                     batches: createdBatches.map(b => ({

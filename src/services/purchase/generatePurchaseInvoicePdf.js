@@ -9,18 +9,13 @@ import { getOrCreateGstConfig } from "../gstConfig/getOrCreateGstConfig.js";
 // putObject helper already used by branch logo / profile image / product
 // image uploads elsewhere in this app.
 //
-// systemInvoiceFile is a permanent historical document once set - a
-// purchase is never re-invoiced, only ever invoiced once. The guard
-// below is the real enforcement (not just documentation): a caller must
-// pass a purchase whose systemInvoiceFile is still null/unset, or this
-// throws rather than silently regenerating and overwriting.
+// Pure render-and-upload - it does not decide WHETHER a purchase should
+// be (re)invoiced, only HOW. That "already has one, is this a deliberate
+// regenerate?" guard lives in the caller
+// (generatePurchaseInvoice.controller.js), same separation of concerns
+// Sale uses between its own PDF step and setSaleInvoiceFile.controller.js's
+// overwrite guard.
 export const generatePurchaseInvoicePdf = async (purchase) => {
-    if (purchase.systemInvoiceFile) {
-        throw new Error(
-            "This purchase already has a system invoice - it cannot be regenerated or overwritten."
-        );
-    }
-
     // Read Global Settings fresh at generation time only - this PDF is
     // generated exactly once and stored permanently, so it always
     // reflects whatever the header color/currency were AT THE MOMENT of
