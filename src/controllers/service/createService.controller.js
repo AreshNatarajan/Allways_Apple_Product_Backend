@@ -14,6 +14,8 @@ import { recordStockMovement } from "../../services/purchase/recordStockMovement
 import { cascadeIntakeIfSameBranch } from "../../services/service/sameBranchCascade.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // ============================================================
 // CREATE SERVICE
 // ============================================================
@@ -199,12 +201,45 @@ export const createServiceController = async (req, res) => {
         });
       } else {
         // NEW_CUSTOMER / OUT_CUSTOMER - customer-owned item, never
-        // linked to a real ProductSerial (spec section 15).
+        // linked to a real ProductSerial (spec section 15). Unlike an
+        // INVENTORY row (protected for free by ProductSerial.status -
+        // an IN_SERVICE unit simply can't be selected again), a
+        // customer-owned serial has no such record to lock, so the same
+        // physical device could otherwise be registered on two
+        // concurrently-open tickets with nothing to stop it. Checked
+        // only when a serial was actually entered - many customer
+        // intakes have no readable serial at all (blank is never
+        // treated as a collision with another blank). Same query the
+        // live check-serial endpoint runs (see
+        // checkServiceSerial.controller.js) - kept in sync so a serial
+        // the UI already accepted can't fail here on a normal submit.
+        const serialText = row.serialNumberText?.trim() || "";
+
+        if (serialText) {
+          if (processedItems.some((it) => it.serialNumberText && it.serialNumberText.toLowerCase() === serialText.toLowerCase())) {
+            errors.push(`${rowLabel} (${product.name}): serial ${serialText} was already entered in another row`);
+            continue;
+          }
+
+          const activeDuplicate = await Service.findOne({
+            isDeleted: false,
+            status: { $ne: "SERVICE_COMPLETED" },
+            items: { $elemMatch: { serialNumberText: new RegExp(`^${escapeRegex(serialText)}$`, "i") } },
+          })
+            .select("serviceNumber")
+            .session(session)
+            .lean();
+          if (activeDuplicate) {
+            errors.push(`${rowLabel} (${product.name}): serial ${serialText} is already on an open service (${activeDuplicate.serviceNumber}) - it must be completed first`);
+            continue;
+          }
+        }
+
         processedItems.push({
           productId: row.productId,
           productName: product.name,
           productSerialId: null,
-          serialNumberText: row.serialNumberText?.trim() || "",
+          serialNumberText: serialText,
           description: { main: row.description?.main?.trim() || "", second: row.description?.second?.trim() || "" },
           images: Array.isArray(row.images) ? row.images.filter((img) => img?.url && img?.key) : [],
           issueDescription: row.issueDescription?.trim() || "",

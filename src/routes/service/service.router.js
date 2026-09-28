@@ -6,6 +6,7 @@ import requirePermission from "../../middleware/requirePermission.js";
 
 import { getServiceableUnitsController } from "../../controllers/service/getServiceableUnits.controller.js";
 import { lookupServiceableUnitBySerialController } from "../../controllers/service/lookupServiceableUnitBySerial.controller.js";
+import { checkServiceSerialController } from "../../controllers/service/checkServiceSerial.controller.js";
 import { createServiceController } from "../../controllers/service/createService.controller.js";
 import { getAllServicesController } from "../../controllers/service/getAllServices.controller.js";
 import { getServiceByIdController } from "../../controllers/service/getServiceById.controller.js";
@@ -22,6 +23,7 @@ import { deleteServiceItemStagingImageController } from "../../controllers/servi
 
 router.get("/inventory/lookup", authMiddleware, lookupServiceableUnitBySerialController);
 router.get("/inventory/:productId/units", authMiddleware, getServiceableUnitsController);
+router.get("/check-serial", authMiddleware, checkServiceSerialController);
 
 router.post("/staging-images", authMiddleware, requirePermission("service.create"), uploadServiceItemStagingImagesController);
 router.delete("/staging-images", authMiddleware, requirePermission("service.create"), deleteServiceItemStagingImageController);
