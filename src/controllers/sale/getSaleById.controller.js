@@ -1,6 +1,7 @@
 // controllers/sale/getSaleById.controller.js
 import Sale from "../../models/Sale.modal.js";
 import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
+import { buildCustomerLink } from "../../config/customerApp.js";
 import {
     successResponse,
     errorResponse,
@@ -133,6 +134,14 @@ export const getSaleByIdController = async (req, res) => {
             ...sale,
             items: formattedItems,
             editHistory,
+            // Ready-to-use link for Sale Detail's own "Copy" action (see
+            // NotesCard.jsx) - built here rather than making the frontend
+            // know CUSTOMER_APP_URL itself, so there's exactly one place
+            // that can construct a customer-facing URL. Null until a
+            // system invoice has actually been generated at least once
+            // (that's the only place customerAccessToken gets set - see
+            // setSaleInvoiceFile.controller.js).
+            customerLink: buildCustomerLink(sale.customerAccessToken),
             summary: {
                 totalItems,
                 serializedItems,

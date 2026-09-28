@@ -90,6 +90,7 @@ import storefrontRouter from "./routes/storefront/storefront.router.js";
 import publicStorefrontRouter from "./routes/storefront/publicStorefront.router.js";
 import serviceVendorRouter from "./routes/serviceVendor/serviceVendor.router.js";
 import serviceRouter from "./routes/service/service.router.js";
+import publicCustomerAccessRouter from "./routes/customerAccess/publicCustomerAccess.router.js";
 
 app.use(
     "/uploads",
@@ -170,6 +171,12 @@ app.use('/api/storefront', storefrontRouter);
 // its own top-level mount (not nested under /api/storefront) so the
 // "this whole prefix needs no login" boundary is obvious at a glance.
 app.use('/api/public/storefront', publicStorefrontRouter);
+// PUBLIC - no authMiddleware, consumed by shopping-commerce's
+// /customer/:token page. A DIFFERENT prefix from the existing
+// (authenticated, staff-only) /api/customer CRM router above -
+// deliberately not nested under it, same "obvious at a glance" reason
+// as /api/public/storefront.
+app.use('/api/public/customer', publicCustomerAccessRouter);
 
 // Service module - deliberately separate from Transfer and from Vendor
 // (Service Vendor is its own concept, not the purchase-supplier
