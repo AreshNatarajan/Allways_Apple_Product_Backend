@@ -711,6 +711,25 @@ const salesSchema = new mongoose.Schema(
     },
 
     // ----------------------------------------------------------
+    // CUSTOMER-FACING ACCESS TOKEN - the customer-facing frontend
+    // (shopping-commerce, /customer/:token) is the ONLY thing this
+    // authorizes: read-only access to THIS one sale's own public-safe
+    // fields (see getPublicSaleByToken.controller.js), nothing else -
+    // never the ERP itself, never any other sale, never staff/branch-
+    // management data. Generated once, lazily, the first time this
+    // sale's invoice email is sent (setSaleInvoiceFile.controller.js) -
+    // most sales are never emailed, so most sales never get one.
+    // crypto.randomBytes, never derived from saleId/customerId/a
+    // timestamp/an incrementing number - see that controller for the
+    // generation itself.
+    // ----------------------------------------------------------
+
+    customerAccessToken: {
+      type: String,
+      default: null,
+    },
+
+    // ----------------------------------------------------------
     // STATUS
     // ----------------------------------------------------------
 
@@ -798,6 +817,12 @@ salesSchema.index({ isDeleted: 1, processStatus: 1 });
 // request. None of the single-field indexes above cover this compound
 // filter, so this is added specifically for that report's performance.
 salesSchema.index({ isDeleted: 1, status: 1, branchId: 1, saleDate: -1 });
+// Public customer-access lookup (getPublicSaleByToken.controller.js) -
+// sparse since most sales never get emailed and so never get a token;
+// unique as a hard backstop alongside the crypto-random generation
+// itself, so a collision could never silently grant access to the
+// wrong sale.
+salesSchema.index({ customerAccessToken: 1 }, { unique: true, sparse: true });
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE
