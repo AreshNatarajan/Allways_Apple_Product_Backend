@@ -209,7 +209,10 @@ export const createServiceController = async (req, res) => {
         // concurrently-open tickets with nothing to stop it. Checked
         // only when a serial was actually entered - many customer
         // intakes have no readable serial at all (blank is never
-        // treated as a collision with another blank).
+        // treated as a collision with another blank). Same query the
+        // live check-serial endpoint runs (see
+        // checkServiceSerial.controller.js) - kept in sync so a serial
+        // the UI already accepted can't fail here on a normal submit.
         const serialText = row.serialNumberText?.trim() || "";
 
         if (serialText) {
