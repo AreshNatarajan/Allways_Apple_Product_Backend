@@ -120,7 +120,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllPurchasesController = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber, sortBy, sortOrder } = req.query;
+    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber, category, sortBy, sortOrder } = req.query;
     const user = req.user;
 
     // ---- sort ----
@@ -208,6 +208,21 @@ export const getAllPurchasesController = async (req, res) => {
       }).select("_id");
       andConditions.push({
         "items.productId": { $in: matchingModelProducts.map((p) => p._id) },
+      });
+    }
+
+    // ---- category filter (dropdown, mirrors Master Products' own
+    // category list exactly) ----
+    // category isn't stored on Purchase.items itself - resolve matching
+    // Products once (same bounded-query pattern as the modelNumber
+    // filter above), then match purchases whose items reference one.
+    if (category && category !== "ALL") {
+      const matchingCategoryProducts = await Product.find({
+        isDeleted: false,
+        category,
+      }).select("_id");
+      andConditions.push({
+        "items.productId": { $in: matchingCategoryProducts.map((p) => p._id) },
       });
     }
 
@@ -879,6 +894,7 @@ export const getAllPurchasesController = async (req, res) => {
         startDate: startDate || null,
         endDate: endDate || null,
         modelNumber: modelNumber || "",
+        category: category || "ALL",
       },
     });
   } catch (error) {

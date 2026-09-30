@@ -94,7 +94,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllSalesController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
-        const { search, status, paymentStatus, customerId, branchId, startDate, endDate, processStatus, modelNumber, sortBy, sortOrder } = req.query;
+        const { search, status, paymentStatus, customerId, branchId, startDate, endDate, processStatus, modelNumber, category, sortBy, sortOrder } = req.query;
         const user = req.user;
 
         // ---- sort ----
@@ -139,6 +139,21 @@ export const getAllSalesController = async (req, res) => {
         // regex match against the embedded field, no extra query.
         if (modelNumber && modelNumber.trim() !== "") {
             andConditions.push({ "items.modelNumber": new RegExp(escapeRegex(modelNumber.trim()), "i") });
+        }
+
+        // ---- category filter (dropdown, mirrors Master Products' own
+        // category list exactly) ----
+        // category isn't stored on Sale.items itself - resolve matching
+        // Products once (same bounded-query pattern as the modelNumber
+        // filter above), then match sales whose items reference one.
+        if (category && category !== "ALL") {
+            const matchingCategoryProducts = await Product.find({
+                isDeleted: false,
+                category,
+            }).select("_id");
+            andConditions.push({
+                "items.productId": { $in: matchingCategoryProducts.map((p) => p._id) },
+            });
         }
 
         // Business sale date, not record-creation timestamp - matches
@@ -741,6 +756,7 @@ export const getAllSalesController = async (req, res) => {
                 endDate: endDate || null,
                 processStatus: processStatus || "ALL",
                 modelNumber: modelNumber || "",
+                category: category || "ALL",
             },
         });
     } catch (error) {
