@@ -60,7 +60,7 @@ export const getAllServicesController = async (req, res) => {
         .populate("items.productSerialId", "serialNumber")
         .populate("originBranchId", "name code")
         .populate("serviceBranchId", "name code")
-        .populate("serviceVendorId", "name")
+        .populate("serviceVendorId", "name phone")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
