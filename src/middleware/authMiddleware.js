@@ -1,6 +1,8 @@
 import User from "../models/User.js";
+import LoginHistory from "../models/LoginHistory.model.js";
 
 import { verifyToken } from "../utils/jwtHandler.js";
+import { getLatestSessionCutoff, isPastSessionCutoff, SESSION_CUTOFF_MESSAGE } from "../utils/sessionCutoff.js";
 
 import {
     errorResponse,
@@ -54,6 +56,26 @@ const authMiddleware = async (
             return errorResponse(
                 res,
                 "Unauthorized: Invalid or expired token",
+                401
+            );
+
+        }
+
+        /**
+         * Daily 8:30 PM IST auto-logout - applies to every role.
+         */
+        if (isPastSessionCutoff(decoded.iat)) {
+
+            if (decoded.sid) {
+                LoginHistory.updateOne(
+                    { userId: decoded.userId, sessionId: decoded.sid, logoutAt: null },
+                    { logoutAt: getLatestSessionCutoff() }
+                ).catch((err) => console.error("Auto-logout LoginHistory update failed:", err));
+            }
+
+            return errorResponse(
+                res,
+                SESSION_CUTOFF_MESSAGE,
                 401
             );
 
