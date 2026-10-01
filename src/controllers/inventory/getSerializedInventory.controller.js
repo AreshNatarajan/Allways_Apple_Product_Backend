@@ -16,8 +16,15 @@ const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // ProductSerial.createdAt (the unit is created at receive time, which
 // tracks purchaseDate closely in practice). sellingPrice/purchasePrice/
 // serialNumber/status are real direct-field sorts.
+//
+// age is the same underlying field as purchaseDate (createdAt) - it's
+// just purchaseDate's inverse (older purchase = larger age), so its
+// sort direction gets flipped relative to the requested sortOrder
+// rather than getting its own SORTABLE_FIELDS entry - see the sortDir
+// flip right before the .sort() call below.
 const SORTABLE_FIELDS = {
     purchaseDate: "createdAt",
+    age: "createdAt",
     sellingPrice: "sellingPrice",
     purchasePrice: "purchasePrice",
     serialNumber: "serialNumber",
@@ -142,7 +149,10 @@ export const getSerializedInventoryController = async (req, res) => {
         // convention used elsewhere for role/branchId).
         const effectiveSortBy = sortBy === "purchasePrice" && !canViewCost ? "" : sortBy;
 
+        const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
         const mapRow = (item) => {
+            const purchaseDate = item.purchaseId?.purchaseDate || item.createdAt;
             const row = {
                 _id: item._id,
                 productId: item.productId?._id || null,
@@ -155,7 +165,24 @@ export const getSerializedInventoryController = async (req, res) => {
                 // model in general, not this specific unit.
                 smallDescription: item.description?.main || "",
                 serialNumber: item.serialNumber,
-                vendorId: item.purchaseId?.vendorId?._id || null,
+                sellingPrice: item.sellingPrice || 0,
+                // How much a branch user may discount this specific unit -
+                // set/edited by SUPER_ADMIN only (see
+                // updateMaxDiscount.controller.js), but visible to every
+                // role so branch staff can actually apply it at sale time.
+                maxDiscount: item.maxDiscount || 0,
+                status: item.status,
+                // Elapsed days since purchase - computed server-side for
+                // every role (never gated) so the Age indicator still
+                // works even though the raw purchaseDate itself is
+                // SUPER_ADMIN-only below. Floored, not rounded - "Day 0"
+                // for a unit purchased earlier today.
+                ageInDays: Math.max(0, Math.floor((Date.now() - new Date(purchaseDate).getTime()) / MS_PER_DAY)),
+                purchaseNumber: item.purchaseId?.purchaseNumber || "-",
+            };
+            if (canViewCost) {
+                row.purchasePrice = item.purchasePrice || 0;
+                row.vendorId = item.purchaseId?.vendorId?._id || null;
                 // Snapshot-first (matches PurchaseRow.jsx/VendorDetailsCard.jsx's
                 // own explicit convention) - a purchase's vendor display
                 // must reflect who it was actually from at that time, not
@@ -164,14 +191,10 @@ export const getSerializedInventoryController = async (req, res) => {
                 // stock correctly show the customer's name (stamped into
                 // vendorSnapshot.name, see tradeInProcessor.service.js)
                 // instead of the shared system vendor's own generic name.
-                vendorName: item.purchaseId?.vendorSnapshot?.name || item.purchaseId?.vendorId?.name || "-",
-                sellingPrice: item.sellingPrice || 0,
-                gstApplicable: !!item.gstApplicable,
-                status: item.status,
-                purchaseDate: item.purchaseId?.purchaseDate || item.createdAt,
-                purchaseNumber: item.purchaseId?.purchaseNumber || "-",
-            };
-            if (canViewCost) row.purchasePrice = item.purchasePrice || 0;
+                row.vendorName = item.purchaseId?.vendorSnapshot?.name || item.purchaseId?.vendorId?.name || "-";
+                row.gstApplicable = !!item.gstApplicable;
+                row.purchaseDate = purchaseDate;
+            }
             return row;
         };
 
@@ -202,7 +225,11 @@ export const getSerializedInventoryController = async (req, res) => {
             inventory = mapped.slice(skip, skip + limit);
         } else {
             const sortField = SORTABLE_FIELDS[effectiveSortBy] || "createdAt";
-            const sortDir = sortOrder === "asc" ? 1 : -1;
+            let sortDir = sortOrder === "asc" ? 1 : -1;
+            // Age ascending (youngest/most-recently-purchased first) means
+            // createdAt DESCENDING, and vice versa - flip once here rather
+            // than giving age its own mirrored field.
+            if (effectiveSortBy === "age") sortDir *= -1;
 
             const [rows, count] = await Promise.all([
                 ProductSerial.find(filter)
