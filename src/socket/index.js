@@ -1,6 +1,7 @@
 // socket/index.js
 import { Server } from "socket.io";
 import { verifyToken } from "../utils/jwtHandler.js";
+import { isPastSessionCutoff, SESSION_CUTOFF_MESSAGE } from "../utils/sessionCutoff.js";
 import User from "../models/User.js";
 
 // Minimal Socket.IO setup - one authenticated room per user
@@ -35,6 +36,7 @@ export const initSocket = (httpServer, allowedOrigins) => {
 
             const decoded = verifyToken(token);
             if (!decoded) return next(new Error("Unauthorized: Invalid or expired token"));
+            if (isPastSessionCutoff(decoded.iat)) return next(new Error(SESSION_CUTOFF_MESSAGE));
 
             const user = await User.findById(decoded.userId).select("_id role branchId isActive isDeleted");
             if (!user || user.isDeleted || !user.isActive) {
