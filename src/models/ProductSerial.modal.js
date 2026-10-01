@@ -87,6 +87,19 @@ const productSerialSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // Ceiling on how much a branch user may discount this specific unit
+    // at Sale time - set/edited by SUPER_ADMIN only (see
+    // updateMaxDiscount.controller.js). A plain currency amount, same
+    // typing as purchasePrice/sellingPrice, not a percentage. Not
+    // enforced anywhere yet (Sale creation doesn't read this field) -
+    // this is purely the inventory-side value SUPER_ADMIN sets; Sale-time
+    // enforcement is a separate, not-yet-requested piece of work.
+    maxDiscount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // ============================================================
     // GST (purchase-time decision, persisted so Sale never has to
     // trust a client-supplied value)
