@@ -15,6 +15,7 @@ import SaleReturn from "../../models/SaleReturn.modal.js";
 import SaleExchange from "../../models/SaleExchange.modal.js";
 import PurchaseReturn from "../../models/PurchaseReturn.modal.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
+import { netPendingStages } from "../../services/purchase/vendorCredit.js";
 import { getReturnExchangeAdjustmentRows, sumAdjustmentRows, bucketAdjustmentRowsByDay } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { getTrendStart, keyFnFor } from "../../services/dashboard/trendBucketing.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
@@ -696,9 +697,12 @@ const getPendingPayments = async (saleBranchMatch, purchaseBranchMatch) => {
             { $match: { status: "COMPLETED", isDeleted: false, pendingAmount: { $gt: 0 }, ...saleBranchMatch } },
             { $group: { _id: null, total: { $sum: "$pendingAmount" } } },
         ]),
+        // Net of vendor credit - goods sent back with no payment are no
+        // longer owed (see services/purchase/vendorCredit.js).
         Purchase.aggregate([
             { $match: { status: "COMPLETED", isDeleted: false, pendingAmount: { $gt: 0 }, ...purchaseBranchMatch } },
-            { $group: { _id: null, total: { $sum: "$pendingAmount" } } },
+            ...netPendingStages(),
+            { $group: { _id: null, total: { $sum: "$netPendingAmount" } } },
         ]),
     ]);
     const salePending = saleAgg?.total || 0;

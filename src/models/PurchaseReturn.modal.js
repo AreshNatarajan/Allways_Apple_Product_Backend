@@ -208,10 +208,25 @@ const purchaseReturnSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // How the vendor settles this return:
+    //   REFUND        - vendor refunds now; refundDetails/refundAmount
+    //                   record what was actually received.
+    //   VENDOR_CREDIT - goods go back with no cash moving at return
+    //                   time; refundDetails stays empty, refundAmount 0,
+    //                   and returnAmount above IS the credit owed by the
+    //                   vendor (no separate credit field).
+    // Defaults to REFUND so every return created before this field
+    // existed reads back exactly as it was recorded.
+    settlementType: {
+      type: String,
+      enum: ["REFUND", "VENDOR_CREDIT"],
+      default: "REFUND",
+    },
+
     // The refund actually received from the vendor - entered right at
     // creation time (mirrors SaleReturn.refundDetails exactly), since
     // this applies immediately alongside the inventory change, not as a
-    // separate later step.
+    // separate later step. Always 0 for a VENDOR_CREDIT return.
     refundAmount: {
       type: Number,
       required: true,

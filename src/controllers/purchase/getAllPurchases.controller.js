@@ -8,6 +8,7 @@ import PendingReceive from "../../models/PendingReceive.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import paginate from "../../utils/pagination.js";
+import { getVendorCreditByPurchase, netPendingAfterVendorCredit } from "../../services/purchase/vendorCredit.js";
 
 const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
@@ -288,8 +289,22 @@ export const getAllPurchasesController = async (req, res) => {
     let purchasesPage;
     let allFiltered;
 
+    // Vendor credit (goods returned with no payment) is netted out of
+    // pendingAmount for every figure on this screen - the stored
+    // Purchase document itself is left untouched. See
+    // services/purchase/vendorCredit.js.
+    let vendorCreditMap = new Map();
+    const applyNetPending = (list) => {
+      for (const p of list) {
+        const credit = vendorCreditMap.get(String(p._id));
+        if (credit) p.pendingAmount = netPendingAfterVendorCredit(p.pendingAmount, credit);
+      }
+    };
+
     if (isCustomSort) {
       allFiltered = await Purchase.find(filter).lean();
+      vendorCreditMap = await getVendorCreditByPurchase(allFiltered.map((p) => p._id));
+      applyNetPending(allFiltered); // before sorting, so a pendingAmount sort uses the net figure
 
       // description for a serialized first item lives on its own
       // ProductSerial record; Model Number no longer does - it always
@@ -378,6 +393,8 @@ export const getAllPurchasesController = async (req, res) => {
         withPopulate(Purchase.find(filter)).sort(sortSpec).skip(skip).limit(limit),
         Purchase.find(filter).lean(),
       ]);
+      vendorCreditMap = await getVendorCreditByPurchase(allFiltered.map((p) => p._id));
+      applyNetPending(allFiltered);
     }
 
     const totalRecords = allFiltered.length;
@@ -532,7 +549,8 @@ export const getAllPurchasesController = async (req, res) => {
         reference: purchase.reference || "",
         paymentStatus: purchase.paymentStatus,
         paidAmount: purchase.paidAmount,
-        pendingAmount: purchase.pendingAmount,
+        pendingAmount: netPendingAfterVendorCredit(purchase.pendingAmount, vendorCreditMap.get(String(purchase._id))),
+        vendorCreditAmount: round2(vendorCreditMap.get(String(purchase._id)) || 0),
         paymentDetails: purchase.paymentDetails || [],
         invoiceFile: purchase.invoiceFile,
         signatureFile: purchase.signatureFile,

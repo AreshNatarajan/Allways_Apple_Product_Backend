@@ -30,6 +30,7 @@ import SaleExchange from "../../models/SaleExchange.modal.js";
 import SaleTradeIn from "../../models/SaleTradeIn.modal.js";
 import { getReturnExchangeAdjustmentRows, sumAdjustmentRows } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { netPendingStages } from "../../services/purchase/vendorCredit.js";
 import { parseLocalDate, defaultMonthRange, localBucketKeyFor } from "../../services/analytics/analyticsDateUtils.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -301,7 +302,13 @@ const getVendorPayable = async (branchObjectId) => {
     pendingAmount: { $gt: 0 },
     ...(branchObjectId ? purchaseBranchCondition(branchObjectId) : {}),
   };
-  const [agg] = await Purchase.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$pendingAmount" } } }]);
+  // Net of vendor credit - goods sent back with no payment are no longer
+  // owed (see services/purchase/vendorCredit.js).
+  const [agg] = await Purchase.aggregate([
+    { $match: match },
+    ...netPendingStages(),
+    { $group: { _id: null, total: { $sum: "$netPendingAmount" } } },
+  ]);
   return agg?.total || 0;
 };
 
