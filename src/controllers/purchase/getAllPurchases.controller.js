@@ -113,6 +113,7 @@ const emptyStatsPayload = (page, limit) => ({
   branchStats: [],
   vendorStats: { totalUniqueVendors: 0, topVendors: [] },
   purchaseTrend: [],
+  statTrends: { totalPurchases: 0, totalPurchaseAmount: 0, totalQuantity: 0, totalPaidAmount: 0, totalPendingAmount: 0, paidPurchaseCount: 0, partialAndPendingCount: 0 },
   pagination: { total: 0, page: parseInt(page) || 1, limit: parseInt(limit) || 10, totalPages: 1, currentPage: parseInt(page) || 1, totalRecords: 0, hasNextPage: false, hasPreviousPage: false },
   filters: {},
 });
@@ -839,6 +840,58 @@ export const getAllPurchasesController = async (req, res) => {
     };
 
     // ============================================================
+    // 5.5 MONTH-OVER-MONTH TREND - just the 7 numbers the stat cards on
+    // the list screen show, each compared against the same-length
+    // period last month (1st-of-month -> today vs 1st-of-last-month ->
+    // same day-of-month last month, never the WHOLE previous month -
+    // comparing a partial current month against a full one would
+    // always look like a decline). Reuses every OTHER active filter
+    // (branch/vendor/poType/status/paymentStatus/model/search) exactly
+    // as-is, but never the user's own date-range filter - "vs last
+    // month" is a fixed calendar comparison, not something a custom
+    // date range should be able to change.
+    // ============================================================
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonthComparable = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), 23, 59, 59, 999);
+
+    // filter.$and (branch/vendor/poType/status/paymentStatus/model/search)
+    // was already assembled above (line ~255) - just strip the date range.
+    const { purchaseDate: _ignoredDateFilter, ...trendBaseFilter } = filter;
+
+    const trendSelect = "totalAmount paidAmount pendingAmount paymentStatus items.serialNumbers items.quantity";
+    const [thisMonthForTrend, lastMonthForTrend] = await Promise.all([
+      Purchase.find({ ...trendBaseFilter, purchaseDate: { $gte: startOfThisMonth, $lte: now } }).select(trendSelect).lean(),
+      Purchase.find({ ...trendBaseFilter, purchaseDate: { $gte: startOfLastMonth, $lte: endOfLastMonthComparable } }).select(trendSelect).lean(),
+    ]);
+
+    const statSnapshotOf = (list) => ({
+      totalPurchases: list.length,
+      totalPurchaseAmount: round2(list.reduce((s, p) => s + (p.totalAmount || 0), 0)),
+      totalQuantity: list.reduce((s, p) => s + (p.items || []).reduce((qs, item) => qs + itemQuantity(item), 0), 0),
+      totalPaidAmount: round2(list.reduce((s, p) => s + (p.paidAmount || 0), 0)),
+      totalPendingAmount: round2(list.reduce((s, p) => s + (p.pendingAmount || 0), 0)),
+      paidPurchaseCount: list.filter((p) => p.paymentStatus === "PAID").length,
+      partialAndPendingCount: list.filter((p) => p.paymentStatus === "PARTIAL" || p.paymentStatus === "PENDING").length,
+    });
+
+    const thisMonthSnapshot = statSnapshotOf(thisMonthForTrend);
+    const lastMonthSnapshot = statSnapshotOf(lastMonthForTrend);
+
+    // No previous-month activity at all is "no change" (0%), not a
+    // misleading +100% - only a genuine prev>0 -> curr=0 drop or
+    // prev>0 -> curr>prev rise gets a real percentage.
+    const pctChange = (curr, prev) => {
+      if (prev === 0) return curr === 0 ? 0 : 100;
+      return round2(((curr - prev) / prev) * 100);
+    };
+
+    const statTrends = Object.fromEntries(
+      Object.keys(thisMonthSnapshot).map((key) => [key, pctChange(thisMonthSnapshot[key], lastMonthSnapshot[key])])
+    );
+
+    // ============================================================
     // 6. PAGINATION - legacy field names kept, new names added
     // alongside (section 17).
     // ============================================================
@@ -868,6 +921,7 @@ export const getAllPurchasesController = async (req, res) => {
       branchStats,
       vendorStats,
       purchaseTrend,
+      statTrends,
       pagination,
       filters: {
         search: search || "",
