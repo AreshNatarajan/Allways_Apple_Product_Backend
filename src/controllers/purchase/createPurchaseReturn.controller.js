@@ -51,6 +51,9 @@ export const createPurchaseReturnController = async (req, res) => {
         const user = req.user;
         const { id: purchaseId } = req.params;
         const { branchId, items, reason, refundDetails } = req.body;
+        // Omitted -> REFUND, so any caller that predates this field keeps
+        // today's exact behavior.
+        const settlementType = req.body.settlementType || "REFUND";
 
         if (!mongoose.Types.ObjectId.isValid(purchaseId)) {
             throw buildValidationError("Invalid purchase ID");
@@ -64,8 +67,17 @@ export const createPurchaseReturnController = async (req, res) => {
         if (!Array.isArray(items) || items.length === 0) {
             throw buildValidationError("At least one item is required to process a return");
         }
-        if (!Array.isArray(refundDetails) || refundDetails.length === 0) {
+        if (!["REFUND", "VENDOR_CREDIT"].includes(settlementType)) {
+            throw buildValidationError("Settlement type must be REFUND or VENDOR_CREDIT");
+        }
+        if (settlementType === "REFUND" && (!Array.isArray(refundDetails) || refundDetails.length === 0)) {
             throw buildValidationError("At least one refund entry is required");
+        }
+        // Vendor credit means no money moves now - refuse any refund entry
+        // rather than silently dropping it, so a payment can never be
+        // recorded against a credit-settled return.
+        if (settlementType === "VENDOR_CREDIT" && Array.isArray(refundDetails) && refundDetails.length > 0) {
+            throw buildValidationError("A vendor credit return cannot include refund entries");
         }
 
         if (user.role !== "SUPER_ADMIN" && String(user.branchId) !== String(branchId)) {
@@ -80,6 +92,18 @@ export const createPurchaseReturnController = async (req, res) => {
             throw buildValidationError(`Cannot process a return against a purchase with status "${purchase.status}"`);
         }
 
+        // Vendor credit is only for an immediate purchase-and-return with
+        // no cash flow yet. Once we've paid the vendor anything on this
+        // purchase, the vendor must refund (settlementType REFUND).
+        if (settlementType === "VENDOR_CREDIT") {
+            const hasCashFlow =
+                (Number(purchase.paidAmount) || 0) > 0 ||
+                (purchase.paymentDetails || []).some((p) => (Number(p.amount) || 0) > 0);
+            if (hasCashFlow) {
+                throw buildValidationError("Vendor credit is only allowed when nothing has been paid on this purchase. A payment was already made to the vendor, so the vendor must refund it - use Refund Received.");
+            }
+        }
+
         const branch = await Branch.findOne({ _id: branchId, isDeleted: false }).session(session);
         if (!branch) {
             throw buildValidationError("Branch not found");
@@ -89,7 +113,7 @@ export const createPurchaseReturnController = async (req, res) => {
         // required and > 0, method restricted to the same enum,
         // handledBy always stamped from the authenticated user, never
         // client-trusted.
-        const validatedRefundDetails = refundDetails.map((r) => {
+        const validatedRefundDetails = settlementType === "VENDOR_CREDIT" ? [] : refundDetails.map((r) => {
             const amount = Number(r.amount);
             if (!amount || amount <= 0) {
                 throw buildValidationError("Each refund entry needs an amount greater than 0");
@@ -218,6 +242,7 @@ export const createPurchaseReturnController = async (req, res) => {
                     items: returnItems,
                     reason: reason.trim(),
                     returnAmount,
+                    settlementType,
                     refundAmount,
                     refundDetails: validatedRefundDetails,
                     // Unconditional, regardless of creator role - matches

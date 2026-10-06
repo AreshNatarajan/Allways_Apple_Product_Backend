@@ -1,7 +1,9 @@
 // controllers/service/getAllServices.controller.js
 import mongoose from "mongoose";
 import Service from "../../models/Service.modal.js";
+import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { normalizeLegacyServiceItems } from "../../services/service/normalizeLegacyServiceItems.js";
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -50,7 +52,13 @@ export const getAllServicesController = async (req, res) => {
         { "items.productName": searchRegex },
         { originBranchName: searchRegex },
         { serviceBranchName: searchRegex },
+        // Pre-items[] tickets (see normalizeLegacyServiceItems.js).
+        { serialNumberText: searchRegex },
       ];
+      // INVENTORY rows store a ProductSerial reference, not text - match
+      // those units by their real serial number too.
+      const matchingUnits = await ProductSerial.find({ serialNumber: searchRegex, isDeleted: false }).select("_id").limit(200).lean();
+      if (matchingUnits.length) searchOr.push({ "items.productSerialId": { $in: matchingUnits.map((u) => u._id) } });
       filter.$and = [...(filter.$and || []), { $or: searchOr }];
     }
 
@@ -67,6 +75,8 @@ export const getAllServicesController = async (req, res) => {
         .lean(),
       Service.countDocuments(filter),
     ]);
+
+    await normalizeLegacyServiceItems(services);
 
     return successResponse(res, "Services retrieved successfully", {
       services,

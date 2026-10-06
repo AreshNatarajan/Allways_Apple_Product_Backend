@@ -108,17 +108,27 @@ export const getSerializedItemDetailController = async (req, res) => {
         // (see tradeInProcessor.service.js), never a later live-Vendor edit.
         const vendor = item.purchaseId?.vendorSnapshot || item.purchaseId?.vendorId || null;
         const canViewCost = canViewInventoryCost(user.role);
+        const purchaseDate = item.purchaseId?.purchaseDate || item.createdAt;
+        const ageInDays = Math.max(0, Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (24 * 60 * 60 * 1000)));
 
         const purchaseDetails = {
-            vendor: vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null,
             branch: item.currentBranchId ? { _id: item.currentBranchId._id, name: item.currentBranchId.name, code: item.currentBranchId.code } : null,
             purchaseNumber: item.purchaseId?.purchaseNumber || "-",
             sellingPrice: item.sellingPrice || 0,
-            gstApplicable: !!item.gstApplicable,
+            // Visible to every role (unlike vendor/GST/purchase price/date
+            // below) so branch staff can actually apply it at sale time -
+            // only SUPER_ADMIN can change it, via updateMaxDiscountAPI.
+            maxDiscount: item.maxDiscount || 0,
             hsnCode: item.hsnCode || "",
-            purchaseDate: item.purchaseId?.purchaseDate || item.createdAt,
+            // Elapsed days since purchase - never gated (see
+            // getSerializedInventory.controller.js's matching field) so
+            // the Age indicator still works without exposing the raw date.
+            ageInDays,
         };
         if (canViewCost) {
+            purchaseDetails.vendor = vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null;
+            purchaseDetails.gstApplicable = !!item.gstApplicable;
+            purchaseDetails.purchaseDate = purchaseDate;
             purchaseDetails.purchasePrice = item.purchasePrice || 0;
             purchaseDetails.purchaseGstPercent = item.purchaseGstPercent || 0;
             purchaseDetails.purchaseGstAmount = item.purchaseGstAmount || 0;

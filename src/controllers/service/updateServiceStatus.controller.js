@@ -28,6 +28,11 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 //                              (terminal for serviceType=INVENTORY - releases the held ProductSerial back to AVAILABLE)
 //   CUSTOMER_RECEIVE         - origin branch       ORIGINAL_BRANCH_RECEIVED -> SERVICE_COMPLETED
 //                              (NEW_CUSTOMER/OUT_CUSTOMER only - see Service.modal.js's status-enum comment)
+//   CANCEL                   - origin branch       -> CANCELLED, reason required. Only while the item
+//                              has not left the origin branch and no vendor is involved:
+//                              CUSTOMER_RECEIVED, or SERVICE_BRANCH_RECEIVED when origin IS the
+//                              Service branch (that ticket skipped shipping - see sameBranchCascade.js).
+//                              Releases INVENTORY units back to AVAILABLE.
 export const updateServiceStatusController = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -201,9 +206,34 @@ export const updateServiceStatusController = async (req, res) => {
         service.completedBy = user._id;
         service.completedByName = user.name;
         service.completedAt = new Date();
+      } else if (action === "CANCEL") {
+        requireOriginBranch();
+        requirePermissionGrant();
+        const sameBranch = service.originBranchId.toString() === service.serviceBranchId.toString();
+        const cancellable = service.status === "CUSTOMER_RECEIVED" || (sameBranch && service.status === "SERVICE_BRANCH_RECEIVED");
+        if (!cancellable) {
+          throw {
+            message: "A service can only be cancelled before the item leaves the origin branch. Once it has been sent, it must come back through the normal steps.",
+            statusCode: 400,
+          };
+        }
+        if (!notes?.trim()) {
+          throw { message: "A reason is required to cancel a service", statusCode: 400 };
+        }
+        toStatus = "CANCELLED";
+        historyAction = "CANCELLED";
+        historyBranchId = service.originBranchId;
+        service.cancelledBy = user._id;
+        service.cancelledByName = user.name;
+        service.cancelledAt = new Date();
+        service.cancelReason = notes.trim();
+
+        // INVENTORY units were held (IN_SERVICE) at creation - put them
+        // straight back on sale (AVAILABLE) with a SERVICE_RELEASE entry.
+        await releaseInventoryHold(service, user, session);
       } else {
         throw {
-          message: `Invalid action: ${action}. Allowed: SEND_TO_SERVICE_BRANCH, SERVICE_BRANCH_RECEIVE, ALLOCATE_VENDOR, START_PROCESSING, VENDOR_RETURN, MARK_FINISHED, SEND_TO_ORIGINAL_BRANCH, ORIGINAL_BRANCH_RECEIVE, CUSTOMER_RECEIVE`,
+          message: `Invalid action: ${action}. Allowed: SEND_TO_SERVICE_BRANCH, SERVICE_BRANCH_RECEIVE, ALLOCATE_VENDOR, START_PROCESSING, VENDOR_RETURN, MARK_FINISHED, SEND_TO_ORIGINAL_BRANCH, ORIGINAL_BRANCH_RECEIVE, CUSTOMER_RECEIVE, CANCEL`,
           statusCode: 400,
         };
       }
@@ -225,7 +255,7 @@ export const updateServiceStatusController = async (req, res) => {
       branchId: historyBranchId,
       serviceVendorId: historyServiceVendorId,
       notes:
-        notes ||
+        (action === "CANCEL" ? `Cancelled by ${user.name}: ${notes.trim()}` : notes?.trim()) ||
         (action === "VENDOR_RETURN"
           ? `Vendor returned item(s) - ${repairOutcome === "REPAIRED" ? "repaired" : "unable to repair"}, by ${user.name}`
           : `Service ${historyAction.toLowerCase().replace(/_/g, " ")} by ${user.name}`),

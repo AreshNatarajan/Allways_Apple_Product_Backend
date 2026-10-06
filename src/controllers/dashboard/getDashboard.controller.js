@@ -15,6 +15,7 @@ import SaleReturn from "../../models/SaleReturn.modal.js";
 import SaleExchange from "../../models/SaleExchange.modal.js";
 import PurchaseReturn from "../../models/PurchaseReturn.modal.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
+import { netPendingStages } from "../../services/purchase/vendorCredit.js";
 import { getReturnExchangeAdjustmentRows, sumAdjustmentRows, bucketAdjustmentRowsByDay } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { getTrendStart, keyFnFor } from "../../services/dashboard/trendBucketing.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
@@ -209,6 +210,16 @@ export const getDashboardController = async (req, res) => {
             // ---- new keys ----
             kpis: {
                 today: kpisToday,
+                // Moves with the period filter above (unlike `today`,
+                // always fixed to today, or `summary.totalSales`/
+                // `totalPurchaseAmount`, always all-time) - the one pair
+                // of totals that actually reflects whatever period/branch
+                // is currently selected in DashboardFilters.
+                period: {
+                    period,
+                    sales: sections.totalSales,
+                    purchase: sections.totalPurchases,
+                },
                 overview: {
                     lowStockProducts: stockOverview.lowStockCount,
                     salePendingPayments: round2(pendingPayments.salePending),
@@ -686,9 +697,12 @@ const getPendingPayments = async (saleBranchMatch, purchaseBranchMatch) => {
             { $match: { status: "COMPLETED", isDeleted: false, pendingAmount: { $gt: 0 }, ...saleBranchMatch } },
             { $group: { _id: null, total: { $sum: "$pendingAmount" } } },
         ]),
+        // Net of vendor credit - goods sent back with no payment are no
+        // longer owed (see services/purchase/vendorCredit.js).
         Purchase.aggregate([
             { $match: { status: "COMPLETED", isDeleted: false, pendingAmount: { $gt: 0 }, ...purchaseBranchMatch } },
-            { $group: { _id: null, total: { $sum: "$pendingAmount" } } },
+            ...netPendingStages(),
+            { $group: { _id: null, total: { $sum: "$netPendingAmount" } } },
         ]),
     ]);
     const salePending = saleAgg?.total || 0;
@@ -921,6 +935,13 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
         custEntry.salesAmount += sale.totalAmount || 0;
     }
 
+    // Totals for the already period+branch-scoped `sales`/`purchases`
+    // rows fetched above - the one pair of numbers that actually moves
+    // with the Dashboard's own period filter (unlike getSummary's
+    // all-time totals or getTodayKpis' fixed-to-today ones).
+    const totalSales = { count: sales.length, amount: round2(sales.reduce((s, x) => s + (x.totalAmount || 0), 0)) };
+    const totalPurchases = { count: purchases.length, amount: round2(purchases.reduce((s, x) => s + (x.totalAmount || 0), 0)) };
+
     const salesByCategory = [...categoryMap.entries()]
         .map(([category, v]) => ({ category, revenue: round2(v.revenue), quantity: v.quantity }))
         .sort((a, b) => b.revenue - a.revenue);
@@ -975,7 +996,7 @@ const getPeriodSections = async (saleBranchMatch, purchaseBranchMatch, dateFilte
         .sort((a, b) => b.salesAmount - a.salesAmount)
         .slice(0, 10);
 
-    return { salesByCategory, topSellingProducts, bestVendors, bestCustomers };
+    return { salesByCategory, topSellingProducts, bestVendors, bestCustomers, totalSales, totalPurchases };
 };
 
 // ============================================================

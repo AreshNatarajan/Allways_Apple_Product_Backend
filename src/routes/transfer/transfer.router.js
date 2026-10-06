@@ -11,6 +11,7 @@ import { getTransferByIdController } from "../../controllers/transfer/getTransfe
 import { updateTransferStatusController } from "../../controllers/transfer/updateTransferStatus.controller.js";
 import { getTransferHistoryByIdController } from "../../controllers/transfer/getTransferHistoryById.controller.js";
 import { receiveTransferController } from "../../controllers/transfer/receiveTransfer.controller.js";
+import { getTransferRemindersController } from "../../controllers/transfer/getTransferReminders.controller.js";
 
 // Direct-selection flow - no request/approval, no scanning. Every
 // role check is inline inside each controller (source branch only for
@@ -23,6 +24,10 @@ router.get("/products/:productId/units", authMiddleware, getTransferUnitsControl
 
 router.post("/", authMiddleware, createTransferController);
 router.get("/", authMiddleware, getAllTransfersController);
+
+// Overdue-step reminders for the caller's own branch - must stay above
+// GET /:id or "reminders" would be matched as a transfer id.
+router.get("/reminders", authMiddleware, getTransferRemindersController);
 
 router.get("/:id", authMiddleware, getTransferByIdController);
 
