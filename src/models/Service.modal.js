@@ -32,6 +32,10 @@ const SERVICE_STATUSES = [
   "SENT_TO_ORIGINAL_BRANCH",
   "ORIGINAL_BRANCH_RECEIVED",
   "SERVICE_COMPLETED",
+  // Terminal, off the main path: a ticket created by mistake, cancelled
+  // before the item ever left the origin branch (see the CANCEL action
+  // in updateServiceStatus.controller.js).
+  "CANCELLED",
 ];
 
 // One row per physical item on the service ticket - a ticket can carry
@@ -94,6 +98,22 @@ const serviceItemSchema = new mongoose.Schema(
     // obtain this unit for service. Never used to alter or annotate
     // the Purchase document itself.
     acquisitionPurchaseId: { type: mongoose.Schema.Types.ObjectId, ref: "Purchase", default: null },
+
+    // Re-service: this item already went through a FINISHED service
+    // (customer collected it / unit back in stock) and has come back -
+    // same or a new issue. Points at that earlier ticket + item so the
+    // product details are reused, never re-entered. null = first service.
+    reServiceOf: {
+      type: new mongoose.Schema(
+        {
+          serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
+          serviceNumber: { type: String, required: true },
+          itemIndex: { type: Number, required: true },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
   },
   { _id: false }
 );
@@ -240,6 +260,12 @@ const serviceSchema = new mongoose.Schema(
     completedByName: { type: String, default: null },
     completedAt: { type: Date, default: null },
 
+    // CANCEL action only - see SERVICE_STATUSES.
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    cancelledByName: { type: String, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelReason: { type: String, default: "", trim: true },
+
     isDeleted: {
       type: Boolean,
       default: false,
@@ -266,6 +292,7 @@ serviceSchema.index({ serviceVendorId: 1 });
 serviceSchema.index({ status: 1, createdAt: -1 });
 serviceSchema.index({ serviceType: 1, createdAt: -1 });
 serviceSchema.index({ isDeleted: 1 });
+serviceSchema.index({ "items.reServiceOf.serviceId": 1 });
 
 export const SERVICE_STATUS_VALUES = SERVICE_STATUSES;
 

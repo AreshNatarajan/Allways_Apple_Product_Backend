@@ -18,6 +18,7 @@ const SERVICE_STATUSES = [
   "SENT_TO_ORIGINAL_BRANCH",
   "ORIGINAL_BRANCH_RECEIVED",
   "SERVICE_COMPLETED",
+  "CANCELLED",
 ];
 
 const serviceHistorySchema = new mongoose.Schema(
@@ -44,6 +45,7 @@ const serviceHistorySchema = new mongoose.Schema(
         "SENT_TO_ORIGINAL_BRANCH",
         "ORIGINAL_BRANCH_RECEIVED",
         "CUSTOMER_RECEIVED",
+        "CANCELLED",
       ],
       required: true,
     },

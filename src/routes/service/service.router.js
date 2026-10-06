@@ -14,6 +14,7 @@ import { getServiceHistoryByIdController } from "../../controllers/service/getSe
 import { updateServiceStatusController } from "../../controllers/service/updateServiceStatus.controller.js";
 import { uploadServiceItemStagingImagesController } from "../../controllers/service/uploadServiceItemStagingImages.controller.js";
 import { deleteServiceItemStagingImageController } from "../../controllers/service/deleteServiceItemStagingImage.controller.js";
+import { getServiceProductsController } from "../../controllers/service/getServiceProducts.controller.js";
 
 // Service is NOT Transfer - its own model, its own status lifecycle,
 // its own append-only ServiceHistory. Every role check is inline
@@ -27,6 +28,9 @@ router.get("/check-serial", authMiddleware, checkServiceSerialController);
 
 router.post("/staging-images", authMiddleware, requirePermission("service.create"), uploadServiceItemStagingImagesController);
 router.delete("/staging-images", authMiddleware, requirePermission("service.create"), deleteServiceItemStagingImageController);
+
+// Must stay above "/:id" - otherwise "products" is read as a service id.
+router.get("/products", authMiddleware, getServiceProductsController);
 
 router.post("/", authMiddleware, createServiceController);
 router.get("/", authMiddleware, getAllServicesController);

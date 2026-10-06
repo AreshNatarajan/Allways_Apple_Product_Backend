@@ -1,6 +1,7 @@
 // controllers/service/getServiceById.controller.js
 import Service from "../../models/Service.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { normalizeLegacyServiceItems } from "../../services/service/normalizeLegacyServiceItems.js";
 
 export const getServiceByIdController = async (req, res) => {
   try {
@@ -28,6 +29,14 @@ export const getServiceByIdController = async (req, res) => {
         return errorResponse(res, "Access denied. You can only view services involving your branch.", 403);
       }
     }
+
+    await normalizeLegacyServiceItems(service);
+
+    // Later tickets that re-serviced an item of this one.
+    service.reServices = await Service.find({ isDeleted: false, "items.reServiceOf.serviceId": service._id })
+      .select("serviceNumber status serviceType createdAt items.reServiceOf items.issueDescription")
+      .sort({ createdAt: 1 })
+      .lean();
 
     return successResponse(res, "Service details retrieved successfully", { service });
   } catch (error) {
