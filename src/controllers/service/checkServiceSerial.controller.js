@@ -21,7 +21,7 @@ export const checkServiceSerialController = async (req, res) => {
 
     const activeDuplicate = await Service.findOne({
       isDeleted: false,
-      status: { $ne: "SERVICE_COMPLETED" },
+      status: { $nin: ["SERVICE_COMPLETED", "CANCELLED"] },
       items: { $elemMatch: { serialNumberText: new RegExp(`^${escapeRegex(serialText)}$`, "i") } },
     })
       .select("serviceNumber")
