@@ -4,7 +4,7 @@ const router = express.Router();
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
-import requirePermission from '../../middleware/requirePermission.js';
+import requirePermission, { requireAnyPermission } from '../../middleware/requirePermission.js';
 
 // 1. Change the requires to modern imports
 
@@ -104,8 +104,10 @@ router.get('/:id', authMiddleware, getPurchaseByIdController);
 // its invoice for oversight/documentation is exactly the kind of action
 // they're expected to do - same reasoning as sale.router.js's own
 // /:id/invoice.
-router.post('/upload-system-invoice', authMiddleware, requirePermission('purchase.create'), uploadPurchaseSystemInvoiceController);
-router.patch('/:id/invoice', authMiddleware, requirePermission('purchase.create'), setPurchaseInvoiceFileController);
+// Create/edit/return all regenerate the invoice afterwards, so any of them is enough.
+const PURCHASE_INVOICE_PERMISSIONS = ['purchase.create', 'purchase.edit', 'purchase.return'];
+router.post('/upload-system-invoice', authMiddleware, requireAnyPermission(PURCHASE_INVOICE_PERMISSIONS), uploadPurchaseSystemInvoiceController);
+router.patch('/:id/invoice', authMiddleware, requireAnyPermission(PURCHASE_INVOICE_PERMISSIONS), setPurchaseInvoiceFileController);
 // onlyBranchRoles hard-blocks SUPER_ADMIN here (same as sale.router.js's
 // own /create) - SUPER_ADMIN keeps full read access below (list/detail/
 // stats, for oversight) but never creates a purchase directly. BRANCH_ADMIN/

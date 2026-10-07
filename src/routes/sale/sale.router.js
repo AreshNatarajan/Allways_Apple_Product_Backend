@@ -4,7 +4,7 @@ const router = express.Router();
 import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
-import requirePermission from '../../middleware/requirePermission.js';
+import requirePermission, { requireAnyPermission } from '../../middleware/requirePermission.js';
 
 // 1. Import the controller function
 import { createSaleController } from '../../controllers/sale/createSale.controller.js';
@@ -33,6 +33,10 @@ import { searchPurchasedProductWithSerialNumber } from '../../controllers/sale/s
 import { getAvailableProductsController } from '../../controllers/sale/getAvailableProducts.controller.js'
 
 import { getScannerBarcodeByAvailableProductController } from '../../controllers/sale/getScannerBarcodeByAvailableProductController.js';
+
+// Anyone allowed to change a sale (create/edit/return/exchange/trade-in)
+// may refresh its invoice - each of those flows regenerates it afterwards.
+const SALE_INVOICE_PERMISSIONS = ['sale.create', 'sale.edit', 'sale.return', 'sale.exchange', 'sale.tradeIn'];
 
 
 // Sale creation is BRANCH_ADMIN / STAFF only (onlyBranchRoles) -
@@ -83,8 +87,8 @@ router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission
 // the resulting URL is a SEPARATE, narrower endpoint
 // (setSaleInvoiceFileController below) so setting one field never goes
 // through updateSaleController's much heavier edit-sale side effects.
-router.post('/upload-invoice', authMiddleware, requirePermission('sale.create'), uploadSaleInvoiceController);
-router.patch('/:id/invoice', authMiddleware, requirePermission('sale.create'), setSaleInvoiceFileController);
+router.post('/upload-invoice', authMiddleware, requireAnyPermission(SALE_INVOICE_PERMISSIONS), uploadSaleInvoiceController);
+router.patch('/:id/invoice', authMiddleware, requireAnyPermission(SALE_INVOICE_PERMISSIONS), setSaleInvoiceFileController);
 
 // Plain read action (same access level as GET /:id below) - streams the
 // already-generated invoice PDF back with a real Content-Disposition
