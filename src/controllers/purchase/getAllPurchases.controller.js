@@ -528,6 +528,8 @@ export const getAllPurchasesController = async (req, res) => {
         _id: purchase._id,
         purchaseNumber: purchase.purchaseNumber,
         purchaseDate: purchase.purchaseDate,
+        // VENDOR_PURCHASE | CUSTOMER_EXCHANGE (trade-in) - lets the list hide Edit for trade-ins.
+        source: purchase.source || "VENDOR_PURCHASE",
         modelNumber,
         serialNumber,
         smallDescription,
@@ -912,11 +914,12 @@ export const getAllPurchasesController = async (req, res) => {
     const thisMonthSnapshot = statSnapshotOf(thisMonthForTrend);
     const lastMonthSnapshot = statSnapshotOf(lastMonthForTrend);
 
-    // No previous-month activity at all is "no change" (0%), not a
-    // misleading +100% - only a genuine prev>0 -> curr=0 drop or
-    // prev>0 -> curr>prev rise gets a real percentage.
+    // Nothing last month means there is nothing to compare against:
+    // 0 -> 0 is "no change" (0%); 0 -> something has no meaningful
+    // percentage, so it returns null and the card shows no trend instead
+    // of an invented +100%.
     const pctChange = (curr, prev) => {
-      if (prev === 0) return curr === 0 ? 0 : 100;
+      if (prev === 0) return curr === 0 ? 0 : null;
       return round2(((curr - prev) / prev) * 100);
     };
 

@@ -752,10 +752,11 @@ export const getAllSalesController = async (req, res) => {
         const thisMonthSnapshot = statSnapshotOf(thisMonthForTrend);
         const lastMonthSnapshot = statSnapshotOf(lastMonthForTrend);
 
-        // No last-month activity at all reads as 0% (no change) when this
-        // month is also empty, +100% otherwise - never a divide-by-zero.
+        // Nothing last month means there is nothing to compare against:
+        // 0 -> 0 is "no change" (0%); 0 -> something returns null so the
+        // card shows no trend instead of an invented +100%.
         const pctChange = (curr, prev) => {
-            if (prev === 0) return curr === 0 ? 0 : 100;
+            if (prev === 0) return curr === 0 ? 0 : null;
             return round2(((curr - prev) / prev) * 100);
         };
 
