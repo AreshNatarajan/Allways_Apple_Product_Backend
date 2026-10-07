@@ -25,4 +25,22 @@ const requirePermission = (key) => (req, res, next) => {
     );
 };
 
+// Passes when the user holds ANY one of `keys` - for utility actions
+// that belong to several flows (e.g. refreshing a sale invoice after a
+// return, exchange, trade-in or edit), so each flow's own permission is
+// enough without also needing the record-creation permission.
+export const requireAnyPermission = (keys) => (req, res, next) => {
+    if (req.user.role === "SUPER_ADMIN") {
+        return next();
+    }
+    if (keys.some((key) => req.user.permissions?.[key] === true)) {
+        return next();
+    }
+    return errorResponse(
+        res,
+        "You don't have permission to perform this action",
+        403
+    );
+};
+
 export default requirePermission;
