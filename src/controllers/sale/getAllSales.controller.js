@@ -717,6 +717,54 @@ export const getAllSalesController = async (req, res) => {
         const customerStats = { totalUniqueCustomers, topCustomers };
 
         // ============================================================
+        // 4.5 MONTH-OVER-MONTH TREND - the 7 Sale list stat cards, each
+        // compared against the same-length window last month (1st ->
+        // today vs 1st -> same day-of-month last month, never the whole
+        // previous month). Keeps every other active filter but ignores
+        // the user's own date range - "vs last month" is a fixed
+        // calendar comparison. Mirrors getAllPurchases.controller.js.
+        // ============================================================
+        const now = new Date();
+        const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonthComparable = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), 23, 59, 59, 999);
+
+        // filter.$and (branch/customer/status/search/...) is already
+        // assembled above - just strip the date range.
+        const { saleDate: _ignoredDateFilter, ...trendBaseFilter } = filter;
+
+        const trendSelect = "totalAmount paidAmount pendingAmount paymentStatus items.isSerialized items.quantity";
+        const [thisMonthForTrend, lastMonthForTrend] = await Promise.all([
+            Sale.find({ ...trendBaseFilter, saleDate: { $gte: startOfThisMonth, $lte: now } }).select(trendSelect).lean(),
+            Sale.find({ ...trendBaseFilter, saleDate: { $gte: startOfLastMonth, $lte: endOfLastMonthComparable } }).select(trendSelect).lean(),
+        ]);
+
+        const statSnapshotOf = (list) => ({
+            totalSales: list.length,
+            totalAmount: round2(list.reduce((s, x) => s + (x.totalAmount || 0), 0)),
+            totalQuantity: list.reduce((s, x) => s + (x.items || []).reduce((qs, item) => qs + itemQuantity(item), 0), 0),
+            paidAmount: round2(list.reduce((s, x) => s + (x.paidAmount || 0), 0)),
+            pendingAmount: round2(list.reduce((s, x) => s + (x.pendingAmount || 0), 0)),
+            paidSaleCount: list.filter((x) => x.paymentStatus === "PAID").length,
+            partialAndUnpaidCount: list.filter((x) => x.paymentStatus === "PARTIAL" || x.paymentStatus === "UNPAID").length,
+        });
+
+        const thisMonthSnapshot = statSnapshotOf(thisMonthForTrend);
+        const lastMonthSnapshot = statSnapshotOf(lastMonthForTrend);
+
+        // Nothing last month means there is nothing to compare against:
+        // 0 -> 0 is "no change" (0%); 0 -> something returns null so the
+        // card shows no trend instead of an invented +100%.
+        const pctChange = (curr, prev) => {
+            if (prev === 0) return curr === 0 ? 0 : null;
+            return round2(((curr - prev) / prev) * 100);
+        };
+
+        const statTrends = Object.fromEntries(
+            Object.keys(thisMonthSnapshot).map((key) => [key, pctChange(thisMonthSnapshot[key], lastMonthSnapshot[key])])
+        );
+
+        // ============================================================
         // 5. PAGINATION - legacy field names kept, new names added
         // alongside (matches Purchase's own enhancement).
         // ============================================================
@@ -746,6 +794,7 @@ export const getAllSalesController = async (req, res) => {
             customerStats,
             branchStats,
             saleTrend,
+            statTrends,
             filters: {
                 search: search || "",
                 status: status || "ALL",
