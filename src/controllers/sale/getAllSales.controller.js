@@ -124,6 +124,11 @@ export const getAllSalesController = async (req, res) => {
         if (paymentStatus && paymentStatus !== "ALL" && PAYMENT_STATUS_VALUES.includes(paymentStatus)) {
             filter.paymentStatus = paymentStatus;
         }
+        // "Balance Due" (Dashboard's Sale Pending Payment card): any
+        // sale with money still owed - same rule as that card's total.
+        if (paymentStatus === "OUTSTANDING") {
+            andConditions.push({ pendingAmount: { $gt: 0 } });
+        }
         if (customerId && customerId !== "ALL" && mongoose.Types.ObjectId.isValid(customerId)) {
             filter.customerId = customerId;
         }
