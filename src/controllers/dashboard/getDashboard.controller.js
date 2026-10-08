@@ -47,7 +47,7 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
  *
  * 🔍 Query Parameters:
  * - branchId: filter by specific branch (SUPER_ADMIN only)
- * - period: today | thisWeek | thisMonth | thisQuarter | thisYear | all
+ * - period: today | thisWeek | thisMonth | lastMonth | thisQuarter | thisYear | all
  * - trendRange: today | 7d | 30d | 3m | 6m | 1y (Revenue Trend chart's
  *   own filter set - deliberately independent of `period`, which has a
  *   different option list)
@@ -290,6 +290,8 @@ const getDateFilter = (period) => {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // new Date(y, -1, 1) rolls back to December of the previous year.
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const startOfQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
     const startOfYear = new Date(now.getFullYear(), 0, 1);
 
@@ -297,6 +299,9 @@ const getDateFilter = (period) => {
         case "today": return { $gte: startOfDay };
         case "thisWeek": return { $gte: startOfWeek };
         case "thisMonth": return { $gte: startOfMonth };
+        // The whole previous calendar month - the only bounded period, so
+        // it also needs an upper limit ($lt the 1st of this month).
+        case "lastMonth": return { $gte: startOfLastMonth, $lt: startOfMonth };
         case "thisQuarter": return { $gte: startOfQuarter };
         case "thisYear": return { $gte: startOfYear };
         case "all":
