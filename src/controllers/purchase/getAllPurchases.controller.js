@@ -8,7 +8,7 @@ import PendingReceive from "../../models/PendingReceive.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import paginate from "../../utils/pagination.js";
-import { getVendorCreditByPurchase, netPendingAfterVendorCredit } from "../../services/purchase/vendorCredit.js";
+import { getVendorCreditByPurchase, netPendingAfterVendorCredit, getPurchaseIdsFullyCoveredByVendorCredit } from "../../services/purchase/vendorCredit.js";
 
 const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
@@ -150,6 +150,13 @@ export const getAllPurchasesController = async (req, res) => {
     }
     if (paymentStatus && paymentStatus !== "ALL" && PAYMENT_STATUS_VALUES.includes(paymentStatus)) {
       filter.paymentStatus = paymentStatus;
+    }
+    // "Balance Due" (Dashboard's Purchase Pending Payment card): still
+    // owes money after vendor credit - same rule as that card's total.
+    if (paymentStatus === "OUTSTANDING") {
+      andConditions.push({ pendingAmount: { $gt: 0 } });
+      const coveredIds = await getPurchaseIdsFullyCoveredByVendorCredit();
+      if (coveredIds.length > 0) andConditions.push({ _id: { $nin: coveredIds } });
     }
     if (poType && poType !== "ALL" && PO_TYPE_VALUES.includes(poType)) {
       filter.poType = poType;
