@@ -338,13 +338,11 @@ const purchaseSchema = new mongoose.Schema(
     // ============================================================
     // EOD REVIEW (mirrors Sale.modal.js exactly)
     // ============================================================
-    // Only ever set to PENDING_REVIEW by updatePurchase.controller.js
-    // when a non-SUPER_ADMIN edits this purchase (never at create time -
-    // unlike Sale, a freshly created purchase needs no review). A
-    // SUPER_ADMIN's own edit clears it back to null instead, since
-    // SUPER_ADMIN is already the reviewing authority. Once reviewed,
-    // editing again resets it back to PENDING_REVIEW - review always
-    // reflects the latest edited state, never a stale one.
+    // Every new purchase starts PENDING_REVIEW (createPurchase.controller.js);
+    // only purchases created before EOD review existed have null. Editing
+    // resets it per updatePurchase.controller.js, and reviewPurchase
+    // .controller.js records APPROVED/REJECTED - an audit decision only,
+    // never a change to stock, money or any other purchase data.
     processStatus: {
       type: String,
       enum: ["PENDING_REVIEW", "APPROVED", "REJECTED"],

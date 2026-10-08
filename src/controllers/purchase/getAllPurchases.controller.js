@@ -13,6 +13,8 @@ import { getVendorCreditByPurchase, netPendingAfterVendorCredit, getPurchaseIdsF
 const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
 const PAYMENT_STATUS_VALUES = ["PAID", "PENDING", "PARTIAL"];
+// EOD review status (Purchase.processStatus) - same values as Sale's list filter.
+const PROCESS_STATUS_VALUES = ["PENDING_REVIEW", "APPROVED", "REJECTED"];
 const PO_TYPE_VALUES = ["CENTRAL", "BRANCH"];
 
 // Columns whose value isn't a plain top-level Purchase field sortable by
@@ -122,7 +124,7 @@ const emptyStatsPayload = (page, limit) => ({
 export const getAllPurchasesController = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber, category, sortBy, sortOrder } = req.query;
+    const { search, status, paymentStatus, poType, vendorId, branchId, startDate, endDate, modelNumber, category, processStatus, sortBy, sortOrder } = req.query;
     const user = req.user;
 
     // ---- sort ----
@@ -157,6 +159,9 @@ export const getAllPurchasesController = async (req, res) => {
       andConditions.push({ pendingAmount: { $gt: 0 } });
       const coveredIds = await getPurchaseIdsFullyCoveredByVendorCredit();
       if (coveredIds.length > 0) andConditions.push({ _id: { $nin: coveredIds } });
+    }
+    if (processStatus && processStatus !== "ALL" && PROCESS_STATUS_VALUES.includes(processStatus)) {
+      filter.processStatus = processStatus;
     }
     if (poType && poType !== "ALL" && PO_TYPE_VALUES.includes(poType)) {
       filter.poType = poType;
@@ -290,6 +295,7 @@ export const getAllPurchasesController = async (req, res) => {
       ["branchId", "name code"],
       ["createdBy", "name email"],
       ["updatedBy", "name email"],
+      ["reviewedBy", "name"],
       ["items.productId", "name productCode category isSerialized hsnCode description modelNumber"],
     ];
     const withPopulate = (query) => populateFields.reduce((q, [path, select]) => q.populate(path, select), query);
@@ -572,6 +578,10 @@ export const getAllPurchasesController = async (req, res) => {
         notes: purchase.notes,
         createdBy: purchase.createdBy ? { _id: purchase.createdBy._id, name: purchase.createdBy.name, email: purchase.createdBy.email } : null,
         updatedBy: purchase.updatedBy ? { _id: purchase.updatedBy._id, name: purchase.updatedBy.name, email: purchase.updatedBy.email } : null,
+        // EOD review (null on purchases created before review existed).
+        processStatus: purchase.processStatus || null,
+        reviewedBy: purchase.reviewedBy ? { _id: purchase.reviewedBy._id, name: purchase.reviewedBy.name } : null,
+        reviewedAt: purchase.reviewedAt || null,
         isDeleted: purchase.isDeleted,
         createdAt: purchase.createdAt,
         updatedAt: purchase.updatedAt,
@@ -977,6 +987,7 @@ export const getAllPurchasesController = async (req, res) => {
         endDate: endDate || null,
         modelNumber: modelNumber || "",
         category: category || "ALL",
+        processStatus: processStatus || "ALL",
       },
     });
   } catch (error) {
