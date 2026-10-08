@@ -3,16 +3,26 @@ import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import { errorResponse } from "../../utils/responseHandler.js";
 
-const MONTH_ABBR = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sept", "oct", "nov", "dec"];
-
-// Same "<customer name> <month> <day>.pdf" convention as the frontend's
-// own buildInvoiceFileName (generateSaleInvoicePdf.js) - duplicated here
-// rather than shared, since the two run in different runtimes.
+// Always_Apple_Products_<CustomerName>_<DD-MM-YYYY>.pdf (sale date, India
+// time) - must match buildSaleInvoiceFileName in shopping-frontend's
+// src/utils/invoiceFileName.js, which names the same file when it's
+// downloaded right after Sale Create. Duplicated rather than shared,
+// since the two run in different runtimes.
 const buildInvoiceFileName = (sale) => {
     const customer = sale.customerSnapshot?.name ? sale.customerSnapshot : (sale.customerId || {});
-    const rawName = (customer?.name || "invoice").trim().replace(/[\\/:*?"<>|]/g, "") || "invoice";
-    const now = new Date();
-    return `${rawName} ${MONTH_ABBR[now.getMonth()]} ${now.getDate()}.pdf`;
+    const safe = String(customer?.name || "")
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, "")
+        .replace(/\s+/g, "_")
+        .replace(/_+/g, "_");
+    const name = safe
+        ? safe.split("_").map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join("_")
+        : "Customer";
+    const saleDate = new Date(sale.saleDate);
+    const date = (Number.isNaN(saleDate.getTime()) ? new Date() : saleDate)
+        .toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })
+        .replace(/\//g, "-");
+    return `Always_Apple_Products_${name}_${date}.pdf`;
 };
 
 // Streams the invoice PDF through our own API rather than letting the
@@ -50,7 +60,10 @@ export const downloadSaleInvoiceController = async (req, res) => {
         const filename = buildInvoiceFileName(sale);
 
         res.set("Content-Type", "application/pdf");
-        res.set("Content-Disposition", `attachment; filename="${filename}"`);
+        // ASCII fallback plus the UTF-8 name (RFC 5987): a non-English
+        // customer name would otherwise be an invalid header value.
+        const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_");
+        res.set("Content-Disposition", `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
         return res.send(buffer);
     } catch (error) {
         console.error("Download Sale Invoice Error:", error);
