@@ -40,6 +40,13 @@ const SORTABLE_FIELDS = {
 // getAllPurchases.controller.js/getAllSales.controller.js.
 const IN_MEMORY_SORT_FIELDS = new Set(["productName", "vendorName", "modelNumber"]);
 
+// Age and Purchase Date are both shown from the populated
+// Purchase.purchaseDate (createdAt only as a fallback) - so they're sorted
+// in-memory by that exact same date. Sorting them by ProductSerial.createdAt
+// put any back-dated purchase (purchaseDate earlier than the day it was
+// entered) in the wrong place relative to the Age shown on screen.
+const PURCHASE_DATE_SORT_FIELDS = new Set(["age", "purchaseDate"]);
+
 export const getSerializedInventoryController = async (req, res) => {
     try {
         const { page, limit, skip } = paginate(req);
@@ -201,7 +208,7 @@ export const getSerializedInventoryController = async (req, res) => {
         let inventory;
         let total;
 
-        if (IN_MEMORY_SORT_FIELDS.has(effectiveSortBy)) {
+        if (IN_MEMORY_SORT_FIELDS.has(effectiveSortBy) || PURCHASE_DATE_SORT_FIELDS.has(effectiveSortBy)) {
             const allRows = await ProductSerial.find(filter)
                 .populate("productId", "name category productCode modelNumber")
                 .populate({
@@ -211,9 +218,18 @@ export const getSerializedInventoryController = async (req, res) => {
                 })
                 .lean();
 
-            const mapped = allRows.map(mapRow);
             const sortDir = sortOrder === "asc" ? 1 : -1;
-            mapped.sort((a, b) => {
+            if (PURCHASE_DATE_SORT_FIELDS.has(effectiveSortBy)) {
+                const purchaseTime = (s) => new Date(s.purchaseId?.purchaseDate || s.createdAt).getTime() || 0;
+                const createdTime = (s) => new Date(s.createdAt).getTime() || 0;
+                // Age ascending (youngest first) = most recent purchase
+                // first, i.e. purchase date descending - so age flips.
+                const dir = effectiveSortBy === "age" ? -sortDir : sortDir;
+                allRows.sort((a, b) => (purchaseTime(a) - purchaseTime(b)) * dir || (createdTime(a) - createdTime(b)) * dir);
+            }
+
+            const mapped = allRows.map(mapRow);
+            if (IN_MEMORY_SORT_FIELDS.has(effectiveSortBy)) mapped.sort((a, b) => {
                 const av = (a[effectiveSortBy] || "").toString().toUpperCase();
                 const bv = (b[effectiveSortBy] || "").toString().toUpperCase();
                 if (av < bv) return -1 * sortDir;
