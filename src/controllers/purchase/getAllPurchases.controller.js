@@ -9,6 +9,7 @@ import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import paginate from "../../utils/pagination.js";
 import { getVendorCreditByPurchase, netPendingAfterVendorCredit, getPurchaseIdsFullyCoveredByVendorCredit } from "../../services/purchase/vendorCredit.js";
+import { getTransferredInPurchases, purchaseBelongsToBranch } from "../../services/purchase/transferredInPurchases.js";
 
 const PAYMENT_METHODS = ["CASH", "UPI", "CARD", "NET_BANKING", "CHEQUE", "EMI"];
 const STATUS_VALUES = ["DRAFT", "COMPLETED", "CANCELLED"];
@@ -193,9 +194,11 @@ export const getAllPurchasesController = async (req, res) => {
     // array element.
     const branchScopeCondition = (id) => ({ $or: [{ branchId: id }, { "items.branchId": id }] });
 
+    // The branch this list is scoped to (null = all branches, SUPER_ADMIN only).
+    let scopeBranchId = null;
     if (user.role === "SUPER_ADMIN") {
       if (branchId && branchId !== "ALL" && mongoose.Types.ObjectId.isValid(branchId)) {
-        andConditions.push(branchScopeCondition(branchId));
+        scopeBranchId = branchId;
       }
     } else {
       // BRANCH_ADMIN / STAFF - always scoped to their own branch
@@ -206,7 +209,26 @@ export const getAllPurchasesController = async (req, res) => {
       if (!user.branchId) {
         return successResponse(res, "Purchases retrieved successfully", emptyStatsPayload(page, limit));
       }
-      andConditions.push(branchScopeCondition(user.branchId));
+      scopeBranchId = user.branchId;
+    }
+
+    // ---- transferred-in purchases ----
+    // A branch also sees the purchases behind stock it RECEIVED from
+    // another branch by transfer (e.g. Coimbatore's purchase, once the
+    // unit reaches Chennai) - read-only, flagged as transferredIn on the
+    // row, and left out of every total/stat below: the purchase was paid
+    // for by the branch that bought it, so counting it here too would
+    // double the company's purchase spend. See transferredInPurchases.js.
+    let transferredInMap = new Map();
+    let ownBranchCondition = null;
+    let branchCondition = null;
+    if (scopeBranchId) {
+      transferredInMap = await getTransferredInPurchases(new mongoose.Types.ObjectId(String(scopeBranchId)));
+      ownBranchCondition = branchScopeCondition(scopeBranchId);
+      branchCondition = transferredInMap.size > 0
+        ? { $or: [...ownBranchCondition.$or, { _id: { $in: [...transferredInMap.keys()].map((id) => new mongoose.Types.ObjectId(id)) } }] }
+        : ownBranchCondition;
+      andConditions.push(branchCondition);
     }
 
     // ---- model number filter (click-to-filter chip) ----
@@ -282,6 +304,12 @@ export const getAllPurchasesController = async (req, res) => {
     if (andConditions.length > 0) {
       filter.$and = andConditions;
     }
+
+    // Same filter, but only the branch's OWN purchases - what every
+    // total/trend below is computed from.
+    const ownFilter = branchCondition && branchCondition !== ownBranchCondition
+      ? { ...filter, $and: filter.$and.map((c) => (c === branchCondition ? ownBranchCondition : c)) }
+      : filter;
 
     // ============================================================
     // 2. FETCH - the paginated/populated page for display, and the
@@ -413,6 +441,15 @@ export const getAllPurchasesController = async (req, res) => {
 
     const totalRecords = allFiltered.length;
 
+    // Rows shown only because their stock was transferred in (not the
+    // branch's own purchase) - listed, but excluded from every stat.
+    const transferredInIds = new Set(
+      scopeBranchId
+        ? allFiltered.filter((p) => transferredInMap.has(String(p._id)) && !purchaseBelongsToBranch(p, scopeBranchId)).map((p) => String(p._id))
+        : []
+    );
+    const statsFiltered = transferredInIds.size > 0 ? allFiltered.filter((p) => !transferredInIds.has(String(p._id))) : allFiltered;
+
     // ============================================================
     // 2.5 FIRST-ITEM PREVIEW LOOKUP (page-bounded, cheap) - the
     // simplified Purchase List shows one row per Purchase document with
@@ -543,6 +580,10 @@ export const getAllPurchasesController = async (req, res) => {
         purchaseDate: purchase.purchaseDate,
         // VENDOR_PURCHASE | CUSTOMER_EXCHANGE (trade-in) - lets the list hide Edit for trade-ins.
         source: purchase.source || "VENDOR_PURCHASE",
+        // Set only when this row is another branch's purchase, shown here
+        // because its stock was transferred in - the list shows it
+        // read-only with a "Transferred from ..." badge.
+        transferredIn: transferredInIds.has(String(purchase._id)) ? transferredInMap.get(String(purchase._id)) : null,
         modelNumber,
         serialNumber,
         smallDescription,
@@ -628,22 +669,22 @@ export const getAllPurchasesController = async (req, res) => {
     });
 
     // ============================================================
-    // 5. AGGREGATE STATS - over the ENTIRE filtered set (allFiltered),
+    // 5. AGGREGATE STATS - over the ENTIRE filtered set (statsFiltered),
     // not just the current page. Every purchase's items[]/paymentDetails[]
     // are already embedded in what we fetched, so this is plain JS
     // reduction - no further per-purchase queries.
     // ============================================================
 
-    const totalPurchaseAmount = round2(allFiltered.reduce((s, p) => s + (p.totalAmount || 0), 0));
-    const totalPaidAmount = round2(allFiltered.reduce((s, p) => s + (p.paidAmount || 0), 0));
-    const totalPendingAmount = round2(allFiltered.reduce((s, p) => s + (p.pendingAmount || 0), 0));
+    const totalPurchaseAmount = round2(statsFiltered.reduce((s, p) => s + (p.totalAmount || 0), 0));
+    const totalPaidAmount = round2(statsFiltered.reduce((s, p) => s + (p.paidAmount || 0), 0));
+    const totalPendingAmount = round2(statsFiltered.reduce((s, p) => s + (p.pendingAmount || 0), 0));
 
-    const paidPurchaseCount = allFiltered.filter((p) => p.paymentStatus === "PAID").length;
-    const partialPurchaseCount = allFiltered.filter((p) => p.paymentStatus === "PARTIAL").length;
-    const pendingPurchaseCount = allFiltered.filter((p) => p.paymentStatus === "PENDING").length;
+    const paidPurchaseCount = statsFiltered.filter((p) => p.paymentStatus === "PAID").length;
+    const partialPurchaseCount = statsFiltered.filter((p) => p.paymentStatus === "PARTIAL").length;
+    const pendingPurchaseCount = statsFiltered.filter((p) => p.paymentStatus === "PENDING").length;
 
-    const centralPurchaseCount = allFiltered.filter((p) => p.poType === "CENTRAL").length;
-    const branchPurchaseCount = allFiltered.filter((p) => p.poType === "BRANCH").length;
+    const centralPurchaseCount = statsFiltered.filter((p) => p.poType === "CENTRAL").length;
+    const branchPurchaseCount = statsFiltered.filter((p) => p.poType === "BRANCH").length;
 
     let totalItemLinesAll = 0, totalQuantityAll = 0;
     let serializedItemCountAll = 0, serializedQuantityAll = 0;
@@ -657,7 +698,7 @@ export const getAllPurchasesController = async (req, res) => {
     const productIdSet = new Set();
     const branchIdSet = new Set();
 
-    for (const purchase of allFiltered) {
+    for (const purchase of statsFiltered) {
       const items = purchase.items || [];
       totalItemLinesAll += items.length;
 
@@ -751,7 +792,7 @@ export const getAllPurchasesController = async (req, res) => {
 
     // ---- receiveStats (purchase-level, whole filtered set) ----
     let receivePending = 0, receivePartial = 0, receiveCompleted = 0;
-    for (const purchase of allFiltered) {
+    for (const purchase of statsFiltered) {
       const st = deriveReceiveStatus(purchase);
       if (st === "PENDING") receivePending++;
       else if (st === "PARTIAL") receivePartial++;
@@ -804,7 +845,7 @@ export const getAllPurchasesController = async (req, res) => {
     }
 
     // ---- amountStats ----
-    const roundOffTotal = allFiltered.reduce((s, p) => s + (p.roundOff ? p.roundOffAmount || 0 : 0), 0);
+    const roundOffTotal = statsFiltered.reduce((s, p) => s + (p.roundOff ? p.roundOffAmount || 0 : 0), 0);
     const amountStats = {
       subtotal: round2(totalPurchaseAmount - totalGstAmountAll - roundOffTotal),
       gstAmount: round2(totalGstAmountAll),
@@ -814,23 +855,26 @@ export const getAllPurchasesController = async (req, res) => {
     };
 
     // ---- purchaseTrend ----
-    const purchaseTrend = buildPurchaseTrend(allFiltered, startDate, endDate);
+    const purchaseTrend = buildPurchaseTrend(statsFiltered, startDate, endDate);
 
     // ---- combined `stats` - legacy nested shape kept exactly as the
     // existing frontend (PurchaseStats.jsx) already reads it
     // (stats.overview / .purchaseStatus / .paymentStatus / .financial),
     // with the new flat fields added alongside, not replacing them. ----
     const stats = {
-      overview: { total: totalRecords, totalAmount: totalPurchaseAmount },
+      overview: { total: statsFiltered.length, totalAmount: totalPurchaseAmount },
       purchaseStatus: {
-        completed: allFiltered.filter((p) => p.status === "COMPLETED").length,
-        draft: allFiltered.filter((p) => p.status === "DRAFT").length,
-        cancelled: allFiltered.filter((p) => p.status === "CANCELLED").length,
+        completed: statsFiltered.filter((p) => p.status === "COMPLETED").length,
+        draft: statsFiltered.filter((p) => p.status === "DRAFT").length,
+        cancelled: statsFiltered.filter((p) => p.status === "CANCELLED").length,
       },
       paymentStatus: { paid: paidPurchaseCount, partialPayment: partialPurchaseCount, unpaid: pendingPurchaseCount },
       financial: { totalPurchaseAmount, totalPaidAmount, totalOutstandingAmount: round2(totalPurchaseAmount - totalPaidAmount) },
 
-      totalPurchases: totalRecords,
+      totalPurchases: statsFiltered.length,
+      // Other branches' purchases listed only because their stock was
+      // transferred in - shown in the list, not counted in any total.
+      transferredInCount: transferredInIds.size,
       totalPurchaseAmount,
       totalPaidAmount,
       totalPendingAmount,
@@ -910,7 +954,8 @@ export const getAllPurchasesController = async (req, res) => {
 
     // filter.$and (branch/vendor/poType/status/paymentStatus/model/search)
     // was already assembled above (line ~255) - just strip the date range.
-    const { purchaseDate: _ignoredDateFilter, ...trendBaseFilter } = filter;
+    // ownFilter: the month-over-month trend covers the branch's own purchases only.
+    const { purchaseDate: _ignoredDateFilter, ...trendBaseFilter } = ownFilter;
 
     const trendSelect = "totalAmount paidAmount pendingAmount paymentStatus items.serialNumbers items.quantity";
     const [thisMonthForTrend, lastMonthForTrend] = await Promise.all([
