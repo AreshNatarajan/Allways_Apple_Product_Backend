@@ -18,6 +18,7 @@ import {
     successResponse,
     errorResponse,
 } from "../../utils/responseHandler.js";
+import { purchaseBelongsToBranch } from "../../services/purchase/transferredInPurchases.js";
 
 // Statuses that mean a serialized unit has genuinely moved (sold,
 // mid-transfer, or flagged) - editing product/serial/price past this
@@ -73,6 +74,16 @@ export const updatePurchaseController = async (req, res) => {
             await session.abortTransaction();
             session.endSession();
             return errorResponse(res, "Purchase not found", 404);
+        }
+
+        // Branch users edit only their own branch's purchases. Another
+        // branch's purchase can now appear in their list (its stock was
+        // transferred in - see transferredInPurchases.js), but it stays
+        // view-only for them; SUPER_ADMIN is unaffected.
+        if (user.role !== "SUPER_ADMIN" && !purchaseBelongsToBranch(purchase, user.branchId)) {
+            await session.abortTransaction();
+            session.endSession();
+            return errorResponse(res, "You can only edit your own branch's purchases", 403);
         }
 
         // Captured before ANY mutation below, so the payment-reconciliation
