@@ -1,6 +1,9 @@
 // controllers/reports/getProfitLoss.controller.js
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
+import Purchase from "../../models/Purchase.modal.js";
+import SaleReturn from "../../models/SaleReturn.modal.js";
+import PurchaseReturn from "../../models/PurchaseReturn.modal.js";
 import Branch from "../../models/Branch.modal.js";
 import { getReturnExchangeAdjustments } from "../../services/reports/getReturnExchangeAdjustments.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
@@ -144,6 +147,30 @@ const getWaterfallTotals = async (match, adjustments = null) => {
     profitBeforeTaxMarginPercent: sales > 0 ? round2((profitBeforeTax / sales) * 100) : 0,
     finalProfitMarginPercent: sales > 0 ? round2((finalProfit / sales) * 100) : 0,
   };
+};
+
+// ============================================================
+// ACTIVITY COUNTS - how many purchases/returns happened in a period,
+// alongside the sales count already produced by getWaterfallTotals.
+// Purchases follow the Dashboard's own period purchase count exactly
+// (COMPLETED, trade-in receipts excluded, branch matched on the purchase
+// or any of its items - see getDashboard.controller.js). Returns follow
+// getReturnExchangeAdjustments.js's convention: every non-REJECTED
+// return, dated by createdAt (neither return model has a business date).
+// ============================================================
+const getActivityCounts = async (branchObjectId, start, end) => {
+  const purchaseMatch = { isDeleted: false, status: "COMPLETED", source: { $ne: "CUSTOMER_EXCHANGE" }, purchaseDate: { $gte: start, $lte: end } };
+  if (branchObjectId) purchaseMatch.$or = [{ branchId: branchObjectId }, { "items.branchId": branchObjectId }];
+
+  const returnMatch = { isDeleted: false, processStatus: { $ne: "REJECTED" }, createdAt: { $gte: start, $lte: end } };
+  if (branchObjectId) returnMatch.branchId = branchObjectId;
+
+  const [purchases, saleReturns, purchaseReturns] = await Promise.all([
+    Purchase.countDocuments(purchaseMatch),
+    SaleReturn.countDocuments(returnMatch),
+    PurchaseReturn.countDocuments(returnMatch),
+  ]);
+  return { purchases, saleReturns, purchaseReturns };
 };
 
 const withComparison = (current, previous) => {
@@ -484,13 +511,25 @@ export const getProfitLossController = async (req, res) => {
     // ============================================================
     // RUN EVERYTHING IN PARALLEL
     // ============================================================
-    const [currentWaterfallTotals, previousWaterfallTotals, trend, serializedUnitPL, nonSerializedBatchPL] = await Promise.all([
+    const [currentWaterfallTotals, previousWaterfallTotals, trend, serializedUnitPL, nonSerializedBatchPL, currentCounts, previousCounts] = await Promise.all([
       getWaterfallTotals(currentMatch, currentAdjustments),
       getWaterfallTotals(previousMatch, previousAdjustments),
       getTrend(currentMatch, currentAdjustments.daily),
       getSerializedUnitPL(currentMatch),
       getNonSerializedBatchPL(currentMatch),
+      getActivityCounts(branchObjectId, start, end),
+      getActivityCounts(branchObjectId, previousStart, previousEnd),
     ]);
+
+    // Sales count comes from the waterfall's own sale set, so it always
+    // agrees with the Sales figure above it.
+    const countWithChange = (current, previous) => ({ value: current, previousValue: previous, changePercent: changePercent(current, previous) });
+    const counts = {
+      sales: countWithChange(currentWaterfallTotals.salesCount, previousWaterfallTotals.salesCount),
+      purchases: countWithChange(currentCounts.purchases, previousCounts.purchases),
+      saleReturns: countWithChange(currentCounts.saleReturns, previousCounts.saleReturns),
+      purchaseReturns: countWithChange(currentCounts.purchaseReturns, previousCounts.purchaseReturns),
+    };
 
     const waterfall = withComparison(currentWaterfallTotals, previousWaterfallTotals);
 
@@ -511,6 +550,7 @@ export const getProfitLossController = async (req, res) => {
       branch: branchInfo,
       branches,
       waterfall,
+      counts,
       trend,
       typeComparison,
       serializedUnitPL,
