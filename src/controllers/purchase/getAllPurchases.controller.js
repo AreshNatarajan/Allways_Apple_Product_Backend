@@ -363,7 +363,8 @@ export const getAllPurchasesController = async (req, res) => {
         if (!fi) return "";
         switch (sortBy) {
           case "qty":
-            return itemQuantity(fi);
+            // Whole-purchase total, matching the row's Qty cell.
+            return (p.items || []).reduce((sum, item) => sum + itemQuantity(item), 0);
           case "purchasePrice":
             return totalPurchasePriceOf(p.items);
           case "totalAmount":
