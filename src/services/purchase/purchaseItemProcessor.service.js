@@ -216,6 +216,7 @@ export const prepareItems = async ({
             };
             const itemNotes = typeof item.notes === "string" ? item.notes.trim().slice(0, 1000) : "";
             const itemMdm = !!item.mdm;
+            const itemIcloud = !!item.icloud;
             const rawItemImages = Array.isArray(item.images) ? item.images : [];
             const itemImages = rawItemImages
                 .filter((img) => img && typeof img.url === "string" && typeof img.key === "string" && img.url.trim() && img.key.trim())
@@ -249,6 +250,7 @@ export const prepareItems = async ({
                 images: itemImages,
                 notes: itemNotes,
                 mdm: itemMdm,
+                icloud: itemIcloud,
             });
 
             processedItems.push({
@@ -569,6 +571,7 @@ export const commitItemInventory = async ({
                 images: serialData.images || [],
                 notes: serialData.notes || "",
                 mdm: serialData.mdm || false,
+                icloud: serialData.icloud || false,
             }),
             serialData,
         }));

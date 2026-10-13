@@ -627,7 +627,7 @@ export const updatePurchaseController = async (req, res) => {
         // ============================================================
         if (Array.isArray(items) && items.length > 0) {
             for (const itemEdit of items) {
-                const { productSerialId, description, notes: serialNotes, images, mdm } = itemEdit || {};
+                const { productSerialId, description, notes: serialNotes, images, mdm, icloud } = itemEdit || {};
                 if (!productSerialId || !mongoose.Types.ObjectId.isValid(productSerialId)) continue;
 
                 const serial = await ProductSerial.findOne({
@@ -642,6 +642,7 @@ export const updatePurchaseController = async (req, res) => {
                 const newSecond = description?.second ?? serial.description?.second ?? "";
                 const newNotes = serialNotes ?? serial.notes ?? "";
                 const newMdm = mdm ?? serial.mdm ?? false;
+                const newIcloud = icloud ?? serial.icloud ?? false;
                 const rawNewImages = Array.isArray(images) ? images : null;
                 const newImages = rawNewImages
                     ? rawNewImages
@@ -660,6 +661,7 @@ export const updatePurchaseController = async (req, res) => {
                 const descChanged = newMain !== (serial.description?.main || "") || newSecond !== (serial.description?.second || "");
                 const notesChanged = newNotes !== (serial.notes || "");
                 const mdmChanged = !!newMdm !== !!serial.mdm;
+                const icloudChanged = !!newIcloud !== !!serial.icloud;
                 const imagesChanged = rawNewImages !== null && JSON.stringify(newImages.map(i => i.key)) !== JSON.stringify((serial.images || []).map(i => i.key));
 
                 if (descChanged) {
@@ -692,6 +694,16 @@ export const updatePurchaseController = async (req, res) => {
                     serial.mdm = newMdm;
                 }
 
+                if (icloudChanged) {
+                    changes.push({
+                        field: `item:${serial.serialNumber}:icloud`,
+                        label: `iCloud (${serial.serialNumber})`,
+                        oldValue: !!serial.icloud ? "Yes" : "No",
+                        newValue: newIcloud ? "Yes" : "No",
+                    });
+                    serial.icloud = !!newIcloud;
+                }
+
                 if (imagesChanged) {
                     changes.push({
                         field: `item:${serial.serialNumber}:images`,
@@ -702,7 +714,7 @@ export const updatePurchaseController = async (req, res) => {
                     serial.images = newImages;
                 }
 
-                if (descChanged || notesChanged || mdmChanged || imagesChanged) {
+                if (descChanged || notesChanged || mdmChanged || icloudChanged || imagesChanged) {
                     await serial.save({ session });
                 }
             }
