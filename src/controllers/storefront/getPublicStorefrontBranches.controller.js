@@ -9,7 +9,8 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 // staff-authenticated-only, see branch.router.js).
 export const getPublicStorefrontBranchesController = async (req, res) => {
     try {
-        const branchIds = await ProductSerial.distinct("currentBranchId", { isDeleted: false, status: "AVAILABLE" });
+        // iCloud units are hidden from the storefront, so they don't make a branch appear.
+        const branchIds = await ProductSerial.distinct("currentBranchId", { isDeleted: false, status: "AVAILABLE", icloud: { $ne: true } });
 
         const branches = await Branch.find({ _id: { $in: branchIds }, isActive: true })
             .select("name code")

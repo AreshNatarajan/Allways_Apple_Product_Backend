@@ -39,7 +39,7 @@ export const getSaleItemBySerialController = async (req, res) => {
             serialNumber: serialNumber.trim().toUpperCase(),
             isDeleted: false,
         })
-            .select("productId serialNumber saleId sellingPrice description notes mdm images")
+            .select("productId serialNumber saleId sellingPrice description notes mdm icloud images")
             .populate("productId", "name modelNumber")
             .populate({
                 path: "saleId",
@@ -91,6 +91,7 @@ export const getSaleItemBySerialController = async (req, res) => {
             description: serial.description || { main: "", second: "" },
             notes: serial.notes || "",
             mdm: !!serial.mdm,
+            icloud: !!serial.icloud,
             images: serial.images || [],
             saleId: serial.saleId._id,
             saleNumber: serial.saleId.saleNumber || "",

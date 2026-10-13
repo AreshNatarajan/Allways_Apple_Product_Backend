@@ -7,7 +7,8 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 // storefront's filter never offers a category with zero results.
 export const getPublicStorefrontCategoriesController = async (req, res) => {
     try {
-        const serials = await ProductSerial.find({ isDeleted: false, status: "AVAILABLE" })
+        // iCloud units are hidden from the storefront, so they don't make a category appear.
+        const serials = await ProductSerial.find({ isDeleted: false, status: "AVAILABLE", icloud: { $ne: true } })
             .select("productId")
             .populate("productId", "category")
             .lean();

@@ -211,6 +211,13 @@ const productSerialSchema = new mongoose.Schema(
       default: false,
     },
 
+    // Per-unit iCloud checkbox - same rules as mdm above (entered at
+    // Purchase time, this physical unit's own record).
+    icloud: {
+      type: Boolean,
+      default: false,
+    },
+
     // Output GST (margin-scheme) is NOT decided or stored at purchase
     // time - it's a different concept from purchaseGstPercent above,
     // read fresh from GstConfig.marginSchemeRate at the moment of sale

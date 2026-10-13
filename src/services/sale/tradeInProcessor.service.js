@@ -103,6 +103,7 @@ export const processTradeIn = async ({ tradeInItems, branchId, saleNumber, custo
         notes: it.notes,
         images: it.images,
         mdm: it.mdm,
+        icloud: it.icloud,
     }));
 
     const phase1 = await prepareItems({

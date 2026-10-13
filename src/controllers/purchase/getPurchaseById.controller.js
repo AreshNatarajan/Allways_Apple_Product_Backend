@@ -59,7 +59,7 @@ export const getPurchaseByIdController = async (req, res) => {
         const serials = await ProductSerial.find({
             purchaseId: purchase._id,
         })
-            .select("productId serialNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt description notes mdm images")
+            .select("productId serialNumber purchasePrice sellingPrice gstApplicable status currentBranchId assignedBranchId createdAt receivedAt soldAt transferredAt description notes mdm icloud images")
             .populate("currentBranchId", "name code")
             .populate("assignedBranchId", "name code")
             .lean();
@@ -239,6 +239,7 @@ export const getPurchaseByIdController = async (req, res) => {
                     description: matchedSerial.description || { main: "", second: "" },
                     notes: matchedSerial.notes || "",
                     mdm: !!matchedSerial.mdm,
+                    icloud: !!matchedSerial.icloud,
                     images: matchedSerial.images || [],
                     currentBranch: matchedSerial.currentBranchId ? {
                         _id: matchedSerial.currentBranchId._id,
