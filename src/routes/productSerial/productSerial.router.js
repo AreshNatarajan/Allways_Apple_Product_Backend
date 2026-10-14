@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
-import requirePermission from '../../middleware/requirePermission.js';
+import { requireAnyPermission } from '../../middleware/requirePermission.js';
 
 import { uploadProductSerialStagingImagesController } from '../../controllers/productSerial/uploadProductSerialStagingImage.controller.js';
 import { deleteProductSerialStagingImageController } from '../../controllers/productSerial/deleteProductSerialStagingImage.controller.js';
@@ -16,7 +16,11 @@ import { deleteProductSerialStagingImageController } from '../../controllers/pro
 // granted purchase.create could create the purchase but was still
 // blocked from uploading its serial images, since this route was never
 // migrated when purchase.create became a per-user grant.
-router.post('/staging-images', authMiddleware, requirePermission('purchase.create'), uploadProductSerialStagingImagesController);
-router.delete('/staging-images', authMiddleware, requirePermission('purchase.create'), deleteProductSerialStagingImageController);
+// purchase.edit too: the Edit Purchase screen and the transferred-units
+// editor (a branch updating photos of units transferred to it) upload
+// through the same staging endpoint.
+const SERIAL_IMAGE_PERMISSIONS = ['purchase.create', 'purchase.edit'];
+router.post('/staging-images', authMiddleware, requireAnyPermission(SERIAL_IMAGE_PERMISSIONS), uploadProductSerialStagingImagesController);
+router.delete('/staging-images', authMiddleware, requireAnyPermission(SERIAL_IMAGE_PERMISSIONS), deleteProductSerialStagingImageController);
 
 export default router;
