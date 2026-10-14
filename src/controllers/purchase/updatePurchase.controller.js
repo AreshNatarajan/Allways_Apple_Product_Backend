@@ -76,14 +76,25 @@ export const updatePurchaseController = async (req, res) => {
             return errorResponse(res, "Purchase not found", 404);
         }
 
-        // Branch users edit only their own branch's purchases. Another
-        // branch's purchase can now appear in their list (its stock was
-        // transferred in - see transferredInPurchases.js), but it stays
-        // view-only for them; SUPER_ADMIN is unaffected.
-        if (user.role !== "SUPER_ADMIN" && !purchaseBelongsToBranch(purchase, user.branchId)) {
-            await session.abortTransaction();
-            session.endSession();
-            return errorResponse(res, "You can only edit your own branch's purchases", 403);
+        // Branch users edit their own branch's purchases in full. Another
+        // branch's purchase can appear in their list because some of its
+        // units were transferred in (see transferredInPurchases.js) - for
+        // those units ONLY (currently at the user's branch), they may
+        // update the photos and main/second description, nothing else.
+        // The route's purchase.edit permission still applies. SUPER_ADMIN
+        // is unaffected.
+        const transferredUnitsOnly = user.role !== "SUPER_ADMIN" && !purchaseBelongsToBranch(purchase, user.branchId);
+        if (transferredUnitsOnly) {
+            const body = req.body || {};
+            const ALLOWED_ITEM_FIELDS = new Set(["productSerialId", "description", "images"]);
+            const otherFields = Object.keys(body).filter((k) => k !== "items" && body[k] !== undefined);
+            const itemEdits = Array.isArray(body.items) ? body.items : [];
+            const otherItemFields = itemEdits.some((it) => Object.keys(it || {}).some((k) => !ALLOWED_ITEM_FIELDS.has(k) && it[k] !== undefined));
+            if (otherFields.length > 0 || otherItemFields || itemEdits.length === 0) {
+                await session.abortTransaction();
+                session.endSession();
+                return errorResponse(res, "On another branch's purchase you can only update the photos and descriptions of units transferred to your branch", 403);
+            }
         }
 
         // Captured before ANY mutation below, so the payment-reconciliation
@@ -637,6 +648,13 @@ export const updatePurchaseController = async (req, res) => {
                 }).session(session);
 
                 if (!serial) continue;
+
+                // Transferred-units edit: the unit must be at the user's branch now.
+                if (transferredUnitsOnly && String(serial.currentBranchId || "") !== String(user.branchId)) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    return errorResponse(res, `Unit ${serial.serialNumber} isn't at your branch - only units transferred to your branch can be updated`, 403);
+                }
 
                 const newMain = description?.main ?? serial.description?.main ?? "";
                 const newSecond = description?.second ?? serial.description?.second ?? "";
