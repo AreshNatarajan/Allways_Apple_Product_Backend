@@ -1,8 +1,11 @@
 import Sale from "../../models/Sale.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { sendSaleInvoicePdf } from "../sale/downloadSaleInvoice.controller.js";
 
-// PUBLIC, unauthenticated - the customer-facing frontend's (shopping-
-// commerce, /customer/:token) ONLY window into ERP data. Deliberately
+const isWellFormedToken = (token) => !!token && typeof token === "string" && token.length >= 32;
+
+// PUBLIC, unauthenticated - the customer invoice app's (shopping-invoice,
+// /invoice/:token) ONLY window into ERP data. Deliberately
 // its own router/controller, never anything under authMiddleware, and
 // never a passthrough of the full Sale document - see the hand-picked
 // `sale` object below for exactly what a customer is allowed to see.
@@ -15,7 +18,7 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 export const getPublicSaleByTokenController = async (req, res) => {
     try {
         const { token } = req.params;
-        if (!token || typeof token !== "string" || token.length < 32) {
+        if (!isWellFormedToken(token)) {
             return errorResponse(res, "Invoice link is invalid or has expired", 404);
         }
 
@@ -43,6 +46,9 @@ export const getPublicSaleByTokenController = async (req, res) => {
             pendingAmount: sale.pendingAmount || 0,
             paymentStatus: sale.paymentStatus,
             invoiceUrl: sale.systemInvoiceFile || null,
+            // The download itself goes through downloadPublicSaleInvoiceController
+            // below (S3 has no CORS and can't set the file name).
+            hasInvoice: !!sale.systemInvoiceFile,
             branch: sale.branchId ? {
                 name: sale.branchId.name,
                 phone: sale.branchId.phones?.[0] || "",
@@ -63,5 +69,29 @@ export const getPublicSaleByTokenController = async (req, res) => {
     } catch (error) {
         console.error("Get Public Sale By Token Error:", error);
         return errorResponse(res, "Failed to retrieve invoice", 500);
+    }
+};
+
+// PUBLIC - the customer's "Download invoice" button. Same token rule as
+// above (the token is the only credential, and every miss is the same
+// generic 404), same PDF and file name as the ERP's own download.
+export const downloadPublicSaleInvoiceController = async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!isWellFormedToken(token)) {
+            return errorResponse(res, "Invoice link is invalid or has expired", 404);
+        }
+
+        const sale = await Sale.findOne({ customerAccessToken: token, isDeleted: false })
+            .select("saleDate customerSnapshot customerId systemInvoiceFile")
+            .populate("customerId", "name");
+        if (!sale) {
+            return errorResponse(res, "Invoice link is invalid or has expired", 404);
+        }
+
+        return await sendSaleInvoicePdf(res, sale);
+    } catch (error) {
+        console.error("Download Public Sale Invoice Error:", error);
+        return errorResponse(res, "Failed to download invoice", 500);
     }
 };
