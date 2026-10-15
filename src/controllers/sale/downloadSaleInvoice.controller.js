@@ -25,6 +25,33 @@ const buildInvoiceFileName = (sale) => {
     return `Always_Apple_Products_${name}_${date}.pdf`;
 };
 
+// Sends a sale's system invoice PDF as a named attachment. Shared with
+// the public customer download (getPublicSaleByToken.controller.js) so
+// both give the customer the exact same file and file name. `sale` needs
+// systemInvoiceFile, saleDate, customerSnapshot and a populated
+// customerId.name.
+export const sendSaleInvoicePdf = async (res, sale) => {
+    if (!sale.systemInvoiceFile) {
+        return errorResponse(res, "This sale has no system invoice yet", 404);
+    }
+
+    const upstream = await fetch(sale.systemInvoiceFile);
+    if (!upstream.ok) {
+        console.error("Invoice upstream fetch failed:", upstream.status, sale.systemInvoiceFile);
+        return errorResponse(res, "Failed to load the invoice file", 502);
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    const filename = buildInvoiceFileName(sale);
+
+    res.set("Content-Type", "application/pdf");
+    // ASCII fallback plus the UTF-8 name (RFC 5987): a non-English
+    // customer name would otherwise be an invalid header value.
+    const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_");
+    res.set("Content-Disposition", `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    return res.send(buffer);
+};
+
 // Streams the invoice PDF through our own API rather than letting the
 // frontend fetch() the raw S3 URL directly - same reasoning as
 // getGstInvoiceSignatureImage.controller.js: the bucket has no CORS
@@ -46,25 +73,7 @@ export const downloadSaleInvoiceController = async (req, res) => {
         if (!sale) {
             return errorResponse(res, "Sale not found", 404);
         }
-        if (!sale.systemInvoiceFile) {
-            return errorResponse(res, "This sale has no system invoice yet", 404);
-        }
-
-        const upstream = await fetch(sale.systemInvoiceFile);
-        if (!upstream.ok) {
-            console.error("Invoice upstream fetch failed:", upstream.status, sale.systemInvoiceFile);
-            return errorResponse(res, "Failed to load the invoice file", 502);
-        }
-
-        const buffer = Buffer.from(await upstream.arrayBuffer());
-        const filename = buildInvoiceFileName(sale);
-
-        res.set("Content-Type", "application/pdf");
-        // ASCII fallback plus the UTF-8 name (RFC 5987): a non-English
-        // customer name would otherwise be an invalid header value.
-        const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_");
-        res.set("Content-Disposition", `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-        return res.send(buffer);
+        return await sendSaleInvoicePdf(res, sale);
     } catch (error) {
         console.error("Download Sale Invoice Error:", error);
         return errorResponse(res, "Failed to download invoice", 500);
