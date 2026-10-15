@@ -3,6 +3,7 @@ import ProductSerial from "../../models/ProductSerial.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import { canViewInventoryCost } from "../../utils/stripInventoryCostFields.js";
+import { getAgeStart, daysSince } from "../../services/inventory/serialAge.js";
 
 // Movement type -> human timeline label/description. PURCHASE_RECEIVE_*
 // covers both the CENTRAL (SUPER_ADMIN, received later at a branch) and
@@ -109,7 +110,12 @@ export const getSerializedItemDetailController = async (req, res) => {
         const vendor = item.purchaseId?.vendorSnapshot || item.purchaseId?.vendorId || null;
         const canViewCost = canViewInventoryCost(user.role);
         const purchaseDate = item.purchaseId?.purchaseDate || item.createdAt;
-        const ageInDays = Math.max(0, Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (24 * 60 * 60 * 1000)));
+        // A unit the customer returned restarts its Age from the return
+        // (services/inventory/serialAge.js) - movements are sorted oldest
+        // first, so the last RETURN is the latest one.
+        const lastReturn = movements.filter((m) => m.type === "RETURN").pop();
+        const { ageStart, returnedAt } = getAgeStart(purchaseDate, lastReturn?.performedAt);
+        const ageInDays = daysSince(ageStart);
 
         const purchaseDetails = {
             branch: item.currentBranchId ? { _id: item.currentBranchId._id, name: item.currentBranchId.name, code: item.currentBranchId.code } : null,
@@ -124,6 +130,7 @@ export const getSerializedItemDetailController = async (req, res) => {
             // getSerializedInventory.controller.js's matching field) so
             // the Age indicator still works without exposing the raw date.
             ageInDays,
+            returnedAt,
         };
         if (canViewCost) {
             purchaseDetails.vendor = vendor ? { name: vendor.name, phone: vendor.phone || "", email: vendor.email || "" } : null;

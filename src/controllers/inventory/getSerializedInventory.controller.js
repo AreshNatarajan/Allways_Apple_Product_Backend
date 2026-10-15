@@ -7,6 +7,7 @@ import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import { canViewInventoryCost } from "../../utils/stripInventoryCostFields.js";
 import { resolveInventoryBranchScope } from "../../utils/resolveInventoryBranchScope.js";
 import paginate from "../../utils/pagination.js";
+import { getLastReturnDates, getAgeStart, daysSince } from "../../services/inventory/serialAge.js";
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -44,7 +45,9 @@ const IN_MEMORY_SORT_FIELDS = new Set(["productName", "vendorName", "modelNumber
 // Purchase.purchaseDate (createdAt only as a fallback) - so they're sorted
 // in-memory by that exact same date. Sorting them by ProductSerial.createdAt
 // put any back-dated purchase (purchaseDate earlier than the day it was
-// entered) in the wrong place relative to the Age shown on screen.
+// entered) in the wrong place relative to the Age shown on screen. Age
+// itself counts from the latest customer return when the unit came back
+// (services/inventory/serialAge.js), and sorts by that same date.
 const PURCHASE_DATE_SORT_FIELDS = new Set(["age", "purchaseDate"]);
 
 export const getSerializedInventoryController = async (req, res) => {
@@ -156,10 +159,13 @@ export const getSerializedInventoryController = async (req, res) => {
         // convention used elsewhere for role/branchId).
         const effectiveSortBy = sortBy === "purchasePrice" && !canViewCost ? "" : sortBy;
 
-        const MS_PER_DAY = 24 * 60 * 60 * 1000;
+        // Latest customer return per unit (see services/inventory/serialAge.js) -
+        // filled per result set below, before mapRow runs.
+        let lastReturnDates = new Map();
 
         const mapRow = (item) => {
             const purchaseDate = item.purchaseId?.purchaseDate || item.createdAt;
+            const { ageStart, returnedAt } = getAgeStart(purchaseDate, lastReturnDates.get(String(item._id)));
             const row = {
                 _id: item._id,
                 productId: item.productId?._id || null,
@@ -179,12 +185,14 @@ export const getSerializedInventoryController = async (req, res) => {
                 // role so branch staff can actually apply it at sale time.
                 maxDiscount: item.maxDiscount || 0,
                 status: item.status,
-                // Elapsed days since purchase - computed server-side for
-                // every role (never gated) so the Age indicator still
-                // works even though the raw purchaseDate itself is
-                // SUPER_ADMIN-only below. Floored, not rounded - "Day 0"
-                // for a unit purchased earlier today.
-                ageInDays: Math.max(0, Math.floor((Date.now() - new Date(purchaseDate).getTime()) / MS_PER_DAY)),
+                // Elapsed days since purchase - or since the customer
+                // returned it, for a unit that came back (it restarts as
+                // fresh stock). Computed server-side for every role (never
+                // gated) so the Age indicator still works even though the
+                // raw purchaseDate itself is SUPER_ADMIN-only below.
+                // Floored, not rounded - "Day 0" for earlier today.
+                ageInDays: daysSince(ageStart),
+                returnedAt,
                 purchaseNumber: item.purchaseId?.purchaseNumber || "-",
             };
             if (canViewCost) {
@@ -218,14 +226,21 @@ export const getSerializedInventoryController = async (req, res) => {
                 })
                 .lean();
 
+            lastReturnDates = await getLastReturnDates(allRows.map((s) => s._id));
+
             const sortDir = sortOrder === "asc" ? 1 : -1;
             if (PURCHASE_DATE_SORT_FIELDS.has(effectiveSortBy)) {
-                const purchaseTime = (s) => new Date(s.purchaseId?.purchaseDate || s.createdAt).getTime() || 0;
+                const purchaseDateOf = (s) => s.purchaseId?.purchaseDate || s.createdAt;
+                // Age sorts by the date it counts from (the return date for
+                // a returned unit), Purchase Date by the purchase date.
+                const sortTime = effectiveSortBy === "age"
+                    ? (s) => new Date(getAgeStart(purchaseDateOf(s), lastReturnDates.get(String(s._id))).ageStart).getTime() || 0
+                    : (s) => new Date(purchaseDateOf(s)).getTime() || 0;
                 const createdTime = (s) => new Date(s.createdAt).getTime() || 0;
-                // Age ascending (youngest first) = most recent purchase
-                // first, i.e. purchase date descending - so age flips.
+                // Age ascending (youngest first) = most recent date
+                // first, i.e. date descending - so age flips.
                 const dir = effectiveSortBy === "age" ? -sortDir : sortDir;
-                allRows.sort((a, b) => (purchaseTime(a) - purchaseTime(b)) * dir || (createdTime(a) - createdTime(b)) * dir);
+                allRows.sort((a, b) => (sortTime(a) - sortTime(b)) * dir || (createdTime(a) - createdTime(b)) * dir);
             }
 
             const mapped = allRows.map(mapRow);
@@ -262,6 +277,7 @@ export const getSerializedInventoryController = async (req, res) => {
                 ProductSerial.countDocuments(filter),
             ]);
 
+            lastReturnDates = await getLastReturnDates(rows.map((s) => s._id));
             inventory = rows.map(mapRow);
             total = count;
         }
