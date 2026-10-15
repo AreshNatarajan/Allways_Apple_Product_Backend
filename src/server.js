@@ -30,10 +30,11 @@ const allowedOrigins = [
     // shopping-commerce (customer storefront) dev server - fixed port,
     // see shopping-commerce/vite.config.js.
     "http://localhost:5180",
-    // shopping-invoice (customer invoice download app) dev server - fixed
-    // port, see shopping-invoice/vite.config.js. Its deployed origin comes
-    // from INVOICE_APP_URL (same value config/customerApp.js links to).
+    // shopping-invoice (customer invoice download app): its dev server
+    // (fixed port, see shopping-invoice/vite.config.js), the live site,
+    // and any INVOICE_APP_URL override (see config/customerApp.js).
     "http://localhost:5190",
+    "https://shopping-invoice.onrender.com",
     ...(process.env.INVOICE_APP_URL ? [process.env.INVOICE_APP_URL.replace(/\/+$/, "")] : []),
     // "https://shopping-frontend-c82v.onrender.com",
     "https://allways-apple-products-frontend.onrender.com",
