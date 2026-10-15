@@ -23,7 +23,7 @@ export const getPublicSaleByTokenController = async (req, res) => {
         }
 
         const sale = await Sale.findOne({ customerAccessToken: token, isDeleted: false })
-            .select("saleNumber saleDate customerSnapshot customerId totalAmount paymentStatus paidAmount pendingAmount items systemInvoiceFile branchId")
+            .select("saleDate customerSnapshot customerId totalAmount paymentStatus paidAmount pendingAmount items systemInvoiceFile branchId")
             .populate("customerId", "name email")
             .populate("branchId", "name phones email")
             .lean();
@@ -38,7 +38,7 @@ export const getPublicSaleByTokenController = async (req, res) => {
         const customer = sale.customerSnapshot?.name ? sale.customerSnapshot : (sale.customerId || {});
 
         const publicSale = {
-            saleNumber: sale.saleNumber,
+            // No saleNumber - the invoice number is internal; customers don't see it.
             saleDate: sale.saleDate,
             customerName: customer.name || "",
             totalAmount: sale.totalAmount || 0,
