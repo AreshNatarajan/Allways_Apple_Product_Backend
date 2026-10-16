@@ -1,4 +1,5 @@
 // controllers/sale/createSale.controller.js
+import { normalizeCardCharge, validateCardCharge, sumConvenienceFee } from "../../services/sale/cardCharges.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
@@ -146,10 +147,16 @@ export const createSaleController = async (req, res) => {
         // 3. VALIDATE PAYMENT DETAILS
         // ============================================================
         
+        for (let i = 0; i < paymentDetails.length; i++) {
+            const cardChargeError = validateCardCharge(paymentDetails[i], i);
+            if (cardChargeError) return rollback(cardChargeError);
+        }
+
         const validatedPaymentDetails = paymentDetails.map(p => ({
             amount: Number(p.amount) || 0,
             paymentDate: p.paymentDate || new Date(),
             paymentMethod: p.paymentMethod || "CASH",
+            cardCharge: normalizeCardCharge(p),
             notes: p.notes || "",
             attachments: Array.isArray(p.attachments)
                 ? p.attachments
@@ -692,6 +699,7 @@ export const createSaleController = async (req, res) => {
                 tradeInTotalValue: totalExchangeValue,
                 netPayableAmount: tradeInEnabled ? payableAmount : null,
                 paymentDetails: validatedPaymentDetails,
+                convenienceFee: sumConvenienceFee(validatedPaymentDetails),
                 paidAmount: paidAmount,
                 pendingAmount: pendingAmount,
                 paymentStatus: paymentStatus,

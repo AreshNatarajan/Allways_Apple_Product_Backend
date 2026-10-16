@@ -1,4 +1,5 @@
 // controllers/sale/updateSale.controller.js
+import { normalizeCardCharge, validateCardCharge, sumConvenienceFee } from "../../services/sale/cardCharges.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
@@ -818,10 +819,15 @@ export const updateSaleController = async (req, res) => {
         // ============================================================
         let finalPaymentDetails = sale.paymentDetails;
         if (paymentDetails !== undefined) {
+            (paymentDetails || []).forEach((p, i) => {
+                const cardChargeError = validateCardCharge(p, i);
+                if (cardChargeError) throw buildValidationError(cardChargeError);
+            });
             finalPaymentDetails = (paymentDetails || []).map((p) => ({
                 amount: Number(p.amount) || 0,
                 paymentDate: p.paymentDate ? new Date(p.paymentDate) : new Date(),
                 paymentMethod: p.paymentMethod || "CASH",
+                cardCharge: normalizeCardCharge(p),
                 notes: p.notes || "",
                 attachments: Array.isArray(p.attachments)
                     ? p.attachments
@@ -853,6 +859,7 @@ export const updateSaleController = async (req, res) => {
             amount: p.amount,
             paymentDate: p.paymentDate ? new Date(p.paymentDate).toISOString() : null,
             paymentMethod: p.paymentMethod,
+            cardCharge: p.cardCharge || 0,
             notes: p.notes || "",
             attachments: (p.attachments || []).map((a) => a.key || a.url),
         }));
@@ -862,6 +869,10 @@ export const updateSaleController = async (req, res) => {
         const newPaymentSummary = `${paymentStatus} · Paid ${paidAmount}`;
         if (paymentsChanged || oldPaymentSummary !== newPaymentSummary) {
             changes.push({ field: "paymentDetails", label: "Payment Details", oldValue: oldPaymentSummary, newValue: newPaymentSummary });
+        }
+        const convenienceFee = sumConvenienceFee(finalPaymentDetails);
+        if (convenienceFee !== round2(sale.convenienceFee || 0)) {
+            changes.push({ field: "convenienceFee", label: "Convenience Fee", oldValue: sale.convenienceFee || 0, newValue: convenienceFee });
         }
 
         if (changes.length === 0) {
@@ -888,6 +899,7 @@ export const updateSaleController = async (req, res) => {
         sale.totalProfitAfterGst = totalProfitAfterGst;
         sale.totalAmount = totalAmount;
         sale.paymentDetails = finalPaymentDetails;
+        sale.convenienceFee = convenienceFee;
         sale.paidAmount = paidAmount;
         sale.pendingAmount = pendingAmount;
         sale.paymentStatus = paymentStatus;

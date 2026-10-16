@@ -88,7 +88,8 @@ export const setSaleInvoiceFileController = async (req, res) => {
                 to: customer.email,
                 customerName: customer.name,
                 saleNumber: sale.saleNumber,
-                totalAmount: sale.totalAmount,
+                // What the customer pays - products + any card convenience fee.
+                totalAmount: (sale.totalAmount || 0) + (sale.convenienceFee || 0),
                 invoiceUrl: sale.systemInvoiceFile,
                 branchId: sale.branchId?._id || sale.branchId,
                 branchPhone: sale.branchId?.phones?.[0] || "",
