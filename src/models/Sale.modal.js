@@ -23,6 +23,15 @@ const paymentDetailSchema = new mongoose.Schema(
       default: "CASH",
     },
 
+    // CARD rows only - the customer's card convenience fee, paid on top
+    // of `amount`. Never counted in paidAmount (see
+    // services/sale/cardCharges.js).
+    cardCharge: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     notes: {
       type: String,
       default: "",
@@ -510,6 +519,16 @@ const salesSchema = new mongoose.Schema(
     paymentDetails: {
       type: [paymentDetailSchema],
       default: [],
+    },
+
+    // Sum of paymentDetails[].cardCharge - the card convenience fee. Kept
+    // OUT of totalAmount (products only - P&L/GST/sales reports); the
+    // customer pays totalAmount + convenienceFee. See
+    // services/sale/cardCharges.js.
+    convenienceFee: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     // PAID / PARTIAL / UNPAID (never "PENDING" - "pending" is

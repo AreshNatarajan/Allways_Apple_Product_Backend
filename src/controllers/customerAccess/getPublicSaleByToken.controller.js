@@ -23,7 +23,7 @@ export const getPublicSaleByTokenController = async (req, res) => {
         }
 
         const sale = await Sale.findOne({ customerAccessToken: token, isDeleted: false })
-            .select("saleNumber saleDate customerSnapshot customerId totalAmount paymentStatus paidAmount pendingAmount items systemInvoiceFile branchId")
+            .select("saleDate customerSnapshot customerId totalAmount convenienceFee paymentStatus paidAmount pendingAmount items systemInvoiceFile branchId")
             .populate("customerId", "name email")
             .populate("branchId", "name phones email")
             .lean();
@@ -38,11 +38,15 @@ export const getPublicSaleByTokenController = async (req, res) => {
         const customer = sale.customerSnapshot?.name ? sale.customerSnapshot : (sale.customerId || {});
 
         const publicSale = {
-            saleNumber: sale.saleNumber,
+            // No saleNumber - the invoice number is internal; customers don't see it.
             saleDate: sale.saleDate,
             customerName: customer.name || "",
-            totalAmount: sale.totalAmount || 0,
-            paidAmount: sale.paidAmount || 0,
+            // What the customer pays: products + any card convenience fee
+            // (see services/sale/cardCharges.js) - the fee is paid with
+            // the card payment itself, so it counts as paid too.
+            convenienceFee: sale.convenienceFee || 0,
+            totalAmount: (sale.totalAmount || 0) + (sale.convenienceFee || 0),
+            paidAmount: (sale.paidAmount || 0) + (sale.convenienceFee || 0),
             pendingAmount: sale.pendingAmount || 0,
             paymentStatus: sale.paymentStatus,
             invoiceUrl: sale.systemInvoiceFile || null,
