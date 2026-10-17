@@ -11,6 +11,13 @@ const MAX_SEARCH_WORDS = 6;
 const searchWords = (search) =>
     typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_WORDS) : [];
 
+// "75000" -> 75000; "", "abc", "-5" -> null (no bound).
+const toPrice = (value) => {
+    if (value === undefined || value === null || String(value).trim() === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 const SORTABLE = {
     newest: { receivedAt: -1, createdAt: -1 },
     priceLow: { sellingPrice: 1 },
@@ -41,10 +48,16 @@ export const getPublicStorefrontProductsController = async (req, res) => {
         if (branchId?.trim() && branchId !== "ALL") {
             filter.currentBranchId = branchId.trim();
         }
-        if (minPrice || maxPrice) {
+        // Price range (inclusive). A non-number / negative bound is ignored
+        // rather than failing the whole request, and a reversed range
+        // (min above max) is read the right way round.
+        let min = toPrice(minPrice);
+        let max = toPrice(maxPrice);
+        if (min !== null && max !== null && min > max) [min, max] = [max, min];
+        if (min !== null || max !== null) {
             filter.sellingPrice = {};
-            if (minPrice) filter.sellingPrice.$gte = Number(minPrice);
-            if (maxPrice) filter.sellingPrice.$lte = Number(maxPrice);
+            if (min !== null) filter.sellingPrice.$gte = min;
+            if (max !== null) filter.sellingPrice.$lte = max;
         }
 
         if (category?.trim()) {
