@@ -3,6 +3,14 @@ import Product from "../../models/Product.modal.js";
 import paginate from "../../utils/pagination.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// "Air  M5" -> ["Air", "M5"]. Capped so a pasted paragraph can't turn
+// into dozens of queries.
+const MAX_SEARCH_WORDS = 6;
+const searchWords = (search) =>
+    typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_WORDS) : [];
+
 const SORTABLE = {
     newest: { receivedAt: -1, createdAt: -1 },
     priceLow: { sellingPrice: 1 },
@@ -39,18 +47,26 @@ export const getPublicStorefrontProductsController = async (req, res) => {
             if (maxPrice) filter.sellingPrice.$lte = Number(maxPrice);
         }
 
-        if (category?.trim() || search?.trim()) {
-            const productFilter = {};
-            if (category?.trim()) productFilter.category = category.trim().toUpperCase();
-            if (search?.trim()) {
-                const term = search.trim();
-                productFilter.$or = [
-                    { name: { $regex: term, $options: "i" } },
-                    { modelNumber: { $regex: term, $options: "i" } },
-                ];
-            }
-            const matches = await Product.find(productFilter).select("_id").lean();
+        if (category?.trim()) {
+            const matches = await Product.find({ category: category.trim().toUpperCase() }).select("_id").lean();
             filter.productId = { $in: matches.map((p) => p._id) };
+        }
+
+        // Word-by-word search across the product's name / model number AND
+        // this unit's own main description ("MACBOOK PRO M3/18GB/512GB 14\"").
+        // Every word typed must appear somewhere, in any order and in
+        // either place - so "air m5" finds a MacBook Air whose description
+        // says M5, and "pro 14" finds "MACBOOK PRO 14\"-A2992".
+        const words = searchWords(search);
+        if (words.length > 0) {
+            const clauses = await Promise.all(
+                words.map(async (word) => {
+                    const pattern = new RegExp(escapeRegex(word), "i");
+                    const named = await Product.find({ $or: [{ name: pattern }, { modelNumber: pattern }] }).select("_id").lean();
+                    return { $or: [{ productId: { $in: named.map((p) => p._id) } }, { "description.main": pattern }] };
+                })
+            );
+            filter.$and = clauses;
         }
 
         const sortSpec = SORTABLE[sort] || SORTABLE.newest;
