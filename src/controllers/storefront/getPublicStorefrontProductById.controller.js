@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { toPublicShowroom, PUBLIC_SHOWROOM_FIELDS } from "../../services/storefront/branchMap.js";
 
 // PUBLIC, unauthenticated - one physical unit's detail page, sourced
 // live from ProductSerial (see getPublicStorefrontProducts.controller.js's
@@ -19,7 +20,7 @@ export const getPublicStorefrontProductByIdController = async (req, res) => {
         // An iCloud unit is hidden from the storefront - a direct link 404s too.
         const serial = await ProductSerial.findOne({ _id: id, isDeleted: false, status: "AVAILABLE", icloud: { $ne: true } })
             .populate("productId", "name category modelNumber")
-            .populate("currentBranchId", "name code")
+            .populate("currentBranchId", PUBLIC_SHOWROOM_FIELDS)
             .select("productId currentBranchId serialNumber sellingPrice description notes mdm images")
             .lean();
 
@@ -43,7 +44,9 @@ export const getPublicStorefrontProductByIdController = async (req, res) => {
             // photo (images[0]) is always the genuine position-1 image
             // even for a record saved before this field existed.
             images: [...(serial.images || [])].sort((a, b) => (a.position || 0) - (b.position || 0)),
-            branch: serial.currentBranchId ? { _id: serial.currentBranchId._id, name: serial.currentBranchId.name, code: serial.currentBranchId.code } : null,
+            // The showroom holding this unit - phone (call / WhatsApp),
+            // address and its map (exact pin, iframe-safe).
+            branch: await toPublicShowroom(serial.currentBranchId),
         };
 
         return successResponse(res, "Product retrieved successfully", { product });
