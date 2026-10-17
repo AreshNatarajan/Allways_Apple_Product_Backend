@@ -8,9 +8,14 @@
 //      maps URL (redirects only - nothing else is requested).
 //   2. The exact pin is read from that URL: "!3d<lat>!4d<lng>" (the place's
 //      own pin) first, then "@<lat>,<lng>", then a "q=<lat>,<lng>" query.
-//   3. That becomes Google's keyless embed page for "<lat>,<lng>"
-//      (embeddable, no API key). A link with only a place name falls back to
-//      a search for that name, and a branch with no link to its address.
+//   3. When the link is for a real Google listing (it carries the place id
+//      "!1s0x...:0x..." and the name), the embed shows THAT listing - name,
+//      address, rating, "Open in Maps" / directions - exactly like Google's
+//      own "Share > Embed a map". A bare-coordinate pin has no place behind
+//      it, so clicking it showed "location couldn't load".
+//   4. Otherwise Google's keyless embed page for "<lat>,<lng>" (no API key).
+//      A link with only a place name falls back to a search for that name,
+//      and a branch with no link to its address.
 // An "Embed a map" iframe code / embed URL pasted as-is is used directly.
 // Results are cached in memory so each link is resolved at most once a day.
 
@@ -33,6 +38,15 @@ const isAllowedHost = (url) => {
 // (which is marked same-origin only). "!" separates pb fields, so it is escaped.
 const embedForQuery = (q) =>
     `https://www.google.com/maps/embed?origin=mfe&pb=!1m3!2m1!1s${encodeURIComponent(q).replace(/%20/g, "+").replace(/!/g, "%21")}!6i17`;
+// Text inside a pb parameter: URL-encoded, spaces as "+", "!" escaped (it
+// separates pb fields).
+const pbText = (t) => encodeURIComponent(t).replace(/%20/g, "+").replace(/!/g, "%21");
+
+// Google's "Share > Embed a map" format for one listing: the map centred on
+// the pin, with that place's card (name, address, rating, Open in Maps).
+const embedForPlace = ({ lat, lng, placeId, name }) =>
+    `https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1500!2d${lng}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s${pbText(placeId)}!2s${pbText(name || "")}!5e0!3m2!1sen!2sin!4v1700000000000!5m2!1sen!2sin`;
+
 const validCoords = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
 
 /** Pulls an iframe's src out of pasted embed code, or returns the text trimmed. */
@@ -47,7 +61,12 @@ export const parseMapsUrl = (url) => {
     let decoded = url;
     try { decoded = decodeURIComponent(url); } catch { /* keep as-is */ }
     const pin = decoded.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
-    if (pin && validCoords(+pin[1], +pin[2])) return { lat: +pin[1], lng: +pin[2] };
+    if (pin && validCoords(+pin[1], +pin[2])) {
+        // A real listing also carries its place id and name.
+        const placeId = decoded.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i)?.[1] || null;
+        const name = decoded.match(/\/maps\/place\/([^/@?]+)/)?.[1]?.replace(/\+/g, " ") || null;
+        return { lat: +pin[1], lng: +pin[2], placeId, name };
+    }
     const at = decoded.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
     if (at && validCoords(+at[1], +at[2])) return { lat: +at[1], lng: +at[2] };
     let params;
@@ -112,7 +131,8 @@ export const getBranchMap = async (branch) => {
             try {
                 const full = await resolveRedirects(raw);
                 const found = parseMapsUrl(full) || parseMapsUrl(raw);
-                if (found?.lat !== undefined) mapEmbedUrl = embedForQuery(`${found.lat},${found.lng}`);
+                if (found?.placeId) mapEmbedUrl = embedForPlace(found);
+                else if (found?.lat !== undefined) mapEmbedUrl = embedForQuery(`${found.lat},${found.lng}`);
                 else if (found?.place) mapEmbedUrl = embedForQuery(found.place);
             } catch (error) {
                 console.error("Branch map link could not be resolved:", raw, error?.message || error);
