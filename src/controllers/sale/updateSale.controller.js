@@ -842,13 +842,30 @@ export const updateSaleController = async (req, res) => {
             }));
         }
         const paidAmount = round2(finalPaymentDetails.reduce((sum, p) => sum + (p.amount || 0), 0));
-        if (paidAmount > totalAmount) {
-            throw buildValidationError(`Paid amount (${paidAmount}) exceeds total amount (${totalAmount})`);
+        // A trade-in pays part of the bill: the sale-time one is deducted
+        // up front (netPayableAmount, same as createSale.controller.js) and a
+        // post-sale one was credited against pending (tradeInCreditApplied,
+        // createSaleTradeIn.controller.js). Both must survive an edit.
+        const saleTradeInValue = sale.tradeInEnabled ? round2(sale.tradeInTotalValue || 0) : 0;
+        const tradeInCredit = round2(sale.tradeInCreditApplied || 0);
+        if (saleTradeInValue > totalAmount) {
+            throw buildValidationError(`Sale total (${totalAmount}) can't be less than the trade-in value (${saleTradeInValue})`);
         }
-        const pendingAmount = round2(totalAmount - paidAmount);
+        const payableAmount = round2(totalAmount - saleTradeInValue - tradeInCredit);
+        if (payableAmount < 0) {
+            throw buildValidationError(`Sale total (${totalAmount}) can't be less than the trade-in value already applied (${round2(saleTradeInValue + tradeInCredit)})`);
+        }
+        if (paidAmount > payableAmount) {
+            throw buildValidationError(
+                saleTradeInValue || tradeInCredit
+                    ? `Paid amount (${paidAmount}) exceeds the amount payable after the trade-in (${Math.max(0, payableAmount)})`
+                    : `Paid amount (${paidAmount}) exceeds total amount (${totalAmount})`
+            );
+        }
+        const pendingAmount = round2(payableAmount - paidAmount);
         let paymentStatus = "UNPAID";
-        if (paidAmount === totalAmount && totalAmount > 0) paymentStatus = "PAID";
-        else if (paidAmount > 0 && paidAmount < totalAmount) paymentStatus = "PARTIAL";
+        if (pendingAmount <= 0 && totalAmount > 0 && (paidAmount > 0 || saleTradeInValue > 0 || tradeInCredit > 0)) paymentStatus = "PAID";
+        else if (paidAmount > 0 || tradeInCredit > 0) paymentStatus = "PARTIAL";
 
         // Per-row comparison, not just the derived status/total summary -
         // that alone missed a real edit whenever total paid didn't change
@@ -898,6 +915,7 @@ export const updateSaleController = async (req, res) => {
         sale.totalProfit = totalProfit;
         sale.totalProfitAfterGst = totalProfitAfterGst;
         sale.totalAmount = totalAmount;
+        if (sale.tradeInEnabled) sale.netPayableAmount = round2(totalAmount - saleTradeInValue);
         sale.paymentDetails = finalPaymentDetails;
         sale.convenienceFee = convenienceFee;
         sale.paidAmount = paidAmount;

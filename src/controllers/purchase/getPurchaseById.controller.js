@@ -8,6 +8,9 @@ import Batch from "../../models/Batch.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import Branch from "../../models/Branch.modal.js";
 import PurchaseEditHistory from "../../models/PurchaseEditHistory.modal.js";
+import Sale from "../../models/Sale.modal.js";
+import SaleTradeIn from "../../models/SaleTradeIn.modal.js";
+import Customer from "../../models/Customer.modal.js";
 
 import {
     successResponse,
@@ -510,11 +513,41 @@ export const getPurchaseByIdController = async (req, res) => {
             .lean();
 
         // ============================================================
+        // Trade-in purchase (source CUSTOMER_EXCHANGE): the sale it came
+        // from and the CUSTOMER who handed the product over - shown in
+        // place of the vendor (the vendor is only the shared system
+        // "Customer Exchange (Trade-In)" record).
+        // ============================================================
+        let exchange = null;
+        if (purchase.source === "CUSTOMER_EXCHANGE") {
+            let sourceSale = await Sale.findOne({ tradeInPurchaseId: purchase._id }).select("saleNumber customerId customerSnapshot").lean();
+            let tradeInId = null;
+            if (!sourceSale) {
+                const tradeIn = await SaleTradeIn.findOne({ tradeInPurchaseId: purchase._id }).select("saleId").lean();
+                if (tradeIn) {
+                    tradeInId = tradeIn._id;
+                    sourceSale = await Sale.findById(tradeIn.saleId).select("saleNumber customerId customerSnapshot").lean();
+                }
+            }
+            if (sourceSale) {
+                const live = sourceSale.customerId ? await Customer.findById(sourceSale.customerId).select("name mobile email address").lean() : null;
+                const c = live || sourceSale.customerSnapshot || {};
+                exchange = {
+                    saleId: sourceSale._id,
+                    saleNumber: sourceSale.saleNumber,
+                    tradeInId,
+                    customer: { _id: sourceSale.customerId || null, name: c.name || "", mobile: c.mobile || "", email: c.email || "", address: c.address || "" },
+                };
+            }
+        }
+
+        // ============================================================
         // 12. RESPONSE
         // ============================================================
 
         return successResponse(res, "Purchase retrieved successfully", {
             ...purchase,
+            exchange,
             overallReceiveStatus,
             batchSummary: {
                 totalBatches,
