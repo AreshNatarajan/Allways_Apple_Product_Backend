@@ -20,6 +20,7 @@ import { getSaleExchangesController } from '../../controllers/sale/getSaleExchan
 import { getExchangeReplacementUnitController } from '../../controllers/sale/getExchangeReplacementUnit.controller.js';
 import { createSaleTradeInController } from '../../controllers/sale/createSaleTradeIn.controller.js';
 import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIns.controller.js';
+import { getSaleTradeInEditController, updateSaleTradeInController } from '../../controllers/sale/saleTradeInEdit.controller.js';
 import { getSaleItemBySerialController } from '../../controllers/sale/getSaleItemBySerial.controller.js';
 import { uploadSaleInvoiceController } from '../../controllers/sale/uploadSaleInvoice.controller.js';
 import { setSaleInvoiceFileController } from '../../controllers/sale/setSaleInvoiceFile.controller.js';
@@ -133,6 +134,10 @@ router.get('/:id/exchanges', authMiddleware, getSaleExchangesController);
 // lets SUPER_ADMIN through unconditionally, no separate review route -
 // reviewSale.controller.js's cascade covers this too).
 router.post('/:id/trade-in', authMiddleware, requirePermission('sale.tradeIn'), createSaleTradeInController);
+// Edit a sale's trade-in(s) + the customer's details (see saleTradeInEdit.controller.js).
+const TRADE_IN_EDIT_PERMISSIONS = ['sale.edit', 'sale.tradeIn'];
+router.get('/:id/trade-in-edit', authMiddleware, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), getSaleTradeInEditController);
+router.put('/:id/trade-in-edit', authMiddleware, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), updateSaleTradeInController);
 router.get('/:id/trade-ins', authMiddleware, getSaleTradeInsController);
 
 // Add route for getting sale by ID

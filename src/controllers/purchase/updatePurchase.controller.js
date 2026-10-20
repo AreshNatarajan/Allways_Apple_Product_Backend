@@ -97,6 +97,24 @@ export const updatePurchaseController = async (req, res) => {
             }
         }
 
+        // Trade-in purchase (source CUSTOMER_EXCHANGE): it is created and
+        // priced through its sale, so here only its units' photos, main/
+        // second description, MDM and iCloud can change. Product / serial /
+        // value / customer are edited from the sale's trade-in instead
+        // (saleTradeInEdit.controller.js), which keeps the sale's balance in step.
+        if (purchase.source === "CUSTOMER_EXCHANGE") {
+            const body = req.body || {};
+            const ALLOWED_ITEM_FIELDS = new Set(["productSerialId", "description", "images", "mdm", "icloud"]);
+            const otherFields = Object.keys(body).filter((k) => k !== "items" && body[k] !== undefined);
+            const itemEdits = Array.isArray(body.items) ? body.items : [];
+            const otherItemFields = itemEdits.some((it) => Object.keys(it || {}).some((k) => !ALLOWED_ITEM_FIELDS.has(k) && it[k] !== undefined));
+            if (otherFields.length > 0 || otherItemFields || itemEdits.length === 0) {
+                await session.abortTransaction();
+                session.endSession();
+                return errorResponse(res, "A trade-in purchase only allows photos, descriptions, MDM and iCloud to be changed here - edit the product, price or customer from the sale's trade-in", 403);
+            }
+        }
+
         // Captured before ANY mutation below, so the payment-reconciliation
         // safety net near the end of this function can tell whether
         // totalAmount actually moved this request, regardless of which
@@ -686,7 +704,7 @@ export const updatePurchaseController = async (req, res) => {
                     changes.push({
                         field: `item:${serial.serialNumber}:description`,
                         label: `Description (${serial.serialNumber})`,
-                        oldValue: serial.description,
+                        oldValue: { main: serial.description?.main || "", second: serial.description?.second || "" },
                         newValue: { main: newMain, second: newSecond },
                     });
                     serial.description = { main: newMain, second: newSecond };
