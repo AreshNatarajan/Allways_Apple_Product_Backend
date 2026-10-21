@@ -1,12 +1,18 @@
 // middleware/branchFilter.js
 
+// Matches no document - for a user who must be branch-scoped but has no
+// branch assigned (they see nothing, never everything).
+export const NO_BRANCH_MATCH = { $in: [] };
+
 /**
  * Get branch filter based on user role
  * - SUPER_ADMIN: Can filter by branchId (if provided) or see all
- * - BRANCH_ADMIN: Always filtered by their own branch
+ * - Every other role (BRANCH_ADMIN, STAFF): always their own branch only;
+ *   no branch assigned -> matches nothing. (Previously STAFF, and a
+ *   BRANCH_ADMIN with no branch, got `{}` - every branch's data.)
  */
 export const getBranchFilter = (user, branchId = null) => {
-  if (!user) return {};
+  if (!user) return { branchId: NO_BRANCH_MATCH };
 
   // SUPER_ADMIN: Can see all or filter by branch
   if (user.role === "SUPER_ADMIN") {
@@ -16,13 +22,9 @@ export const getBranchFilter = (user, branchId = null) => {
     return {}; // All branches
   }
 
-  // BRANCH_ADMIN: Only their branch
-  if (user.role === "BRANCH_ADMIN") {
-    if (!user.branchId) {
-      return {}; // No branch assigned - return empty (will show no results)
-    }
-    return { branchId: user.branchId };
+  // Everyone else: only their own branch
+  if (!user.branchId) {
+    return { branchId: NO_BRANCH_MATCH };
   }
-
-  return {};
+  return { branchId: user.branchId };
 };

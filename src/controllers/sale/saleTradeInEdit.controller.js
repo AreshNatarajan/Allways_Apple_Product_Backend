@@ -44,6 +44,7 @@ import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
 import PurchaseEditHistory from "../../models/PurchaseEditHistory.modal.js";
 import { applyCustomerDetails } from "../../services/customer/customerDetails.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canAccessSaleBranch } from "../../services/sale/saleBranchAccess.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -56,7 +57,7 @@ const validationError = (message, statusCode = 400) => {
 
 const itemsValue = (items) => round2((items || []).reduce((s, it) => s + (Number(it.purchasePrice) || 0) * (it.isSerialized ? 1 : Number(it.quantity) || 0), 0));
 
-const canEditSale = (user, sale) => user.role === "SUPER_ADMIN" || String(sale.branchId) === String(user.branchId);
+const canEditSale = (user, sale) => canAccessSaleBranch(user, sale.branchId);
 
 // Why a unit's product / serial / value can't change any more (null = it can).
 const identityLockReason = (serial, sale) => {

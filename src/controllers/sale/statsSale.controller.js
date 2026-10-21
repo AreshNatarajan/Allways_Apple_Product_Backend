@@ -17,8 +17,9 @@ export const statsSaleController = async (req, res) => {
             isActive: true,
         };
 
-        // ✅ If BRANCH_ADMIN, filter by their branch
-        if (role === "BRANCH_ADMIN") {
+        // ✅ Every role except SUPER_ADMIN (BRANCH_ADMIN and STAFF) is
+        // filtered to their own branch - STAFF used to get every branch's totals.
+        if (role !== "SUPER_ADMIN") {
             if (!branchId) {
                 return errorResponse(
                     res,
@@ -142,7 +143,7 @@ export const statsSaleController = async (req, res) => {
             statusSummary,
             
             // Branch info (for context)
-            ...(role === "BRANCH_ADMIN" && { branchId }),
+            ...(role !== "SUPER_ADMIN" && { branchId }),
             ...(role === "SUPER_ADMIN" && { role: "SUPER_ADMIN" }),
         });
 

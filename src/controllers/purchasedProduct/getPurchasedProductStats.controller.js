@@ -1,4 +1,5 @@
 import ProductSerial from "../../models/ProductSerial.modal.js";
+import { getBranchFilter } from "../../middleware/branchFilter.js";
 
 import {
     successResponse,
@@ -10,6 +11,11 @@ export const getPurchasedProductStatsController =
 
         try {
 
+            // Same branch scope as the list (getAllPurchasedProducts):
+            // SUPER_ADMIN every branch, everyone else only units at their branch.
+            const { branchId: scopedBranch } = getBranchFilter(req.user);
+            const scope = scopedBranch ? { currentBranchId: scopedBranch } : {};
+
             const [
                 totalProducts,
                 availableProducts,
@@ -17,17 +23,20 @@ export const getPurchasedProductStatsController =
                 returnedProducts,
             ] = await Promise.all([
 
-                ProductSerial.countDocuments(),
+                ProductSerial.countDocuments(scope),
 
                 ProductSerial.countDocuments({
+                    ...scope,
                     status: "AVAILABLE",
                 }),
 
                 ProductSerial.countDocuments({
+                    ...scope,
                     status: "SOLD",
                 }),
 
                 ProductSerial.countDocuments({
+                    ...scope,
                     status: "RETURNED",
                 }),
             ]);

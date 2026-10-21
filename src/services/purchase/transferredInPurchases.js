@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Transfer from "../../models/Transfer.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
@@ -77,4 +78,26 @@ export const purchaseBelongsToBranch = (purchase, branchId) => {
   const ownBranch = purchase.branchId?._id ?? purchase.branchId;
   if (ownBranch && String(ownBranch) === id) return true;
   return (purchase.items || []).some((item) => item.branchId && String(item.branchId?._id ?? item.branchId) === id);
+};
+
+/**
+ * Who may OPEN a purchase - the same rule as the Purchase list
+ * (getAllPurchases.controller.js): SUPER_ADMIN any; a branch user only
+ * their own branch's purchases, plus one whose stock they received by
+ * transfer (shown read-only, with only those units editable - that edit
+ * rule lives in updatePurchase.controller.js and is unchanged).
+ */
+export const canViewPurchase = async (user, purchase) => {
+  if (user?.role === "SUPER_ADMIN") return true;
+  if (!user?.branchId || !purchase) return false;
+  if (purchaseBelongsToBranch(purchase, user.branchId)) return true;
+  const transferredIn = await getTransferredInPurchases(new mongoose.Types.ObjectId(String(user.branchId)));
+  return transferredIn.has(String(purchase._id));
+};
+
+/** Who may CHANGE a purchase-level record (e.g. its invoice): SUPER_ADMIN, or the branch it belongs to. */
+export const canManagePurchase = (user, purchase) => {
+  if (user?.role === "SUPER_ADMIN") return true;
+  if (!user?.branchId || !purchase) return false;
+  return purchaseBelongsToBranch(purchase, user.branchId);
 };
