@@ -5,6 +5,8 @@ import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
 import requirePermission, { requireAnyPermission } from '../../middleware/requirePermission.js';
+// GET /:id, GET /:id/returns (view) and PATCH /:id/invoice (manage) - branch access, see the file.
+import requirePurchaseAccess from '../../middleware/requirePurchaseAccess.js';
 
 // 1. Change the requires to modern imports
 
@@ -92,8 +94,8 @@ router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewPurchaseContro
 // review above is the shared safety net for both a purchase edit and a
 // return filed against it.
 router.post('/:id/return', authMiddleware, requirePermission('purchase.return'), createPurchaseReturnController);
-router.get('/:id/returns', authMiddleware, getPurchaseReturnsController);
-router.get('/:id', authMiddleware, getPurchaseByIdController);
+router.get('/:id/returns', authMiddleware, requirePurchaseAccess("view"), getPurchaseReturnsController);
+router.get('/:id', authMiddleware, requirePurchaseAccess("view"), getPurchaseByIdController);
 // Client-generated system invoice (see
 // uploadPurchaseSystemInvoice.controller.js's own doc comment) - same
 // two-call shape as Sale's own upload-invoice + PATCH /:id/invoice pair.
@@ -107,7 +109,7 @@ router.get('/:id', authMiddleware, getPurchaseByIdController);
 // Create/edit/return all regenerate the invoice afterwards, so any of them is enough.
 const PURCHASE_INVOICE_PERMISSIONS = ['purchase.create', 'purchase.edit', 'purchase.return'];
 router.post('/upload-system-invoice', authMiddleware, requireAnyPermission(PURCHASE_INVOICE_PERMISSIONS), uploadPurchaseSystemInvoiceController);
-router.patch('/:id/invoice', authMiddleware, requireAnyPermission(PURCHASE_INVOICE_PERMISSIONS), setPurchaseInvoiceFileController);
+router.patch('/:id/invoice', authMiddleware, requirePurchaseAccess("manage"), requireAnyPermission(PURCHASE_INVOICE_PERMISSIONS), setPurchaseInvoiceFileController);
 // onlyBranchRoles hard-blocks SUPER_ADMIN here (same as sale.router.js's
 // own /create) - SUPER_ADMIN keeps full read access below (list/detail/
 // stats, for oversight) but never creates a purchase directly. BRANCH_ADMIN/

@@ -2,6 +2,7 @@
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import SaleExchange from "../../models/SaleExchange.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canAccessSaleBranch } from "../../services/sale/saleBranchAccess.js";
 
 // Single-serial lookup for the Sale List page's search box - same idea
 // as getPurchaseItemBySerial.controller.js, mirrored for Sale: lets
@@ -43,12 +44,18 @@ export const getSaleItemBySerialController = async (req, res) => {
             .populate("productId", "name modelNumber")
             .populate({
                 path: "saleId",
-                select: "saleNumber items isDeleted customerId customerSnapshot",
+                select: "saleNumber branchId items isDeleted customerId customerSnapshot",
                 populate: { path: "customerId", select: "name" },
             })
             .lean();
 
         if (!serial || !serial.saleId || serial.saleId.isDeleted) {
+            return successResponse(res, "No matching item found", { item: null });
+        }
+        // Another branch's sale is treated as no match - a branch user
+        // must never be led to (and then act on) a sale their branch
+        // didn't make. SUPER_ADMIN still finds any branch's sale.
+        if (!canAccessSaleBranch(req.user, serial.saleId.branchId)) {
             return successResponse(res, "No matching item found", { item: null });
         }
 

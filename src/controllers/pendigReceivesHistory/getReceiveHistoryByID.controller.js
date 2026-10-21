@@ -17,9 +17,10 @@ export const getReceiveHistoryByIdController = async (req, res) => {
             return errorResponse(res, "Receive history record not found", 404);
         }
 
-        // ✅ Check permission
-        if (user.role === "BRANCH_ADMIN" && 
-            record.branchId?._id?.toString() !== user.branchId?.toString()) {
+        // ✅ Check permission - every role except SUPER_ADMIN (BRANCH_ADMIN
+        // and STAFF) only their own branch's records; STAFF used to see any.
+        if (user.role !== "SUPER_ADMIN" &&
+            (!user.branchId || record.branchId?._id?.toString() !== user.branchId.toString())) {
             return errorResponse(res, "Access denied", 403);
         }
 

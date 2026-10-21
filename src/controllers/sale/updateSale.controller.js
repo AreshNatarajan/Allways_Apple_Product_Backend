@@ -12,6 +12,7 @@ import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
 import SaleReturn from "../../models/SaleReturn.modal.js";
 import { recordStockMovement } from "../../services/purchase/recordStockMovement.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
+import { canAccessSaleBranch, OTHER_BRANCH_SALE_MESSAGE } from "../../services/sale/saleBranchAccess.js";
 import {
     successResponse,
     errorResponse,
@@ -100,6 +101,11 @@ export const updateSaleController = async (req, res) => {
             await session.abortTransaction();
             session.endSession();
             return errorResponse(res, "Sale not found", 404);
+        }
+        if (!canAccessSaleBranch(user, sale.branchId)) {
+            await session.abortTransaction();
+            session.endSession();
+            return errorResponse(res, OTHER_BRANCH_SALE_MESSAGE, 403);
         }
 
         if (sale.status === "CANCELLED") {

@@ -6,12 +6,20 @@ import Customer from "../../models/Customer.modal.js";
 import { processTradeIn } from "../../services/sale/tradeInProcessor.service.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canAccessSaleBranch, OTHER_BRANCH_SALE_MESSAGE } from "../../services/sale/saleBranchAccess.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 const buildValidationError = (message) => {
     const err = new Error(message);
     err.isValidation = true;
+    return err;
+};
+
+// Another branch's sale - refused with 403 (see services/sale/saleBranchAccess.js).
+const buildForbiddenError = () => {
+    const err = buildValidationError(OTHER_BRANCH_SALE_MESSAGE);
+    err.statusCode = 403;
     return err;
 };
 
@@ -62,6 +70,9 @@ export const createSaleTradeInController = async (req, res) => {
         const sale = await Sale.findOne({ _id: id, isDeleted: false }).session(session);
         if (!sale) {
             throw buildValidationError("Sale not found");
+        }
+        if (!canAccessSaleBranch(user, sale.branchId)) {
+            throw buildForbiddenError();
         }
         if (sale.status !== "COMPLETED") {
             throw buildValidationError(`Cannot process a trade-in against a sale with status "${sale.status}"`);
@@ -197,7 +208,7 @@ export const createSaleTradeInController = async (req, res) => {
         session.endSession();
         console.error("Create Sale Trade-In Error:", error);
         if (error.isValidation) {
-            return errorResponse(res, error.message, 400);
+            return errorResponse(res, error.message, error.statusCode || 400);
         }
         return errorResponse(res, error.message || "Failed to process trade-in", 500);
     }

@@ -85,8 +85,8 @@ export const getAllPurchasedProductsController = async (req, res) => {
 
         // ✅ Get branch name for response
         let branchName = "All Branches";
-        if (branchFilter && branchFilter.branchId) {
-            const branch = await Branch.findById(branchFilter.branchId) // ✅ Now Branch is imported
+        if (user.role !== "SUPER_ADMIN" && user.branchId) {
+            const branch = await Branch.findById(user.branchId) // ✅ Now Branch is imported
                 .select("name code")
                 .lean();
             if (branch) {
@@ -140,7 +140,7 @@ export const getAllPurchasedProductsController = async (req, res) => {
             },
             summary: {
                 branch: branchName,
-                branchId: branchFilter?.branchId || null,
+                branchId: user.role !== "SUPER_ADMIN" ? user.branchId || null : null,
                 ...statusStats,
             },
             filters: {

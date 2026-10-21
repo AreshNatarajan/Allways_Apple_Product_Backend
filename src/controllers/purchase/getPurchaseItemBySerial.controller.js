@@ -1,6 +1,7 @@
 // controllers/purchase/getPurchaseItemBySerial.controller.js
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canViewPurchase } from "../../services/purchase/transferredInPurchases.js";
 
 // Single-serial lookup for the Purchase List page's search box - lets
 // staff jump straight to one specific item inside a purchase (which can
@@ -33,12 +34,18 @@ export const getPurchaseItemBySerialController = async (req, res) => {
             .populate("productId", "name modelNumber")
             .populate({
                 path: "purchaseId",
-                select: "purchaseNumber items isDeleted vendorId vendorSnapshot",
+                select: "purchaseNumber branchId items isDeleted vendorId vendorSnapshot",
                 populate: { path: "vendorId", select: "name" },
             })
             .lean();
 
         if (!serial || !serial.purchaseId || serial.purchaseId.isDeleted) {
+            return successResponse(res, "No matching item found", { item: null });
+        }
+        // Only a purchase this user may open (own branch, or stock received
+        // by transfer - same rule as the Purchase list); anything else is
+        // treated as no match, never leaking its cost / vendor.
+        if (!(await canViewPurchase(req.user, serial.purchaseId))) {
             return successResponse(res, "No matching item found", { item: null });
         }
 

@@ -4,6 +4,7 @@ import Sale from "../../models/Sale.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canAccessSaleBranch, OTHER_BRANCH_SALE_MESSAGE } from "../../services/sale/saleBranchAccess.js";
 
 // Serial lookup for Sale Exchange's "select replacement unit" step -
 // NOT a reuse of GET /sale/scanner/:barcodeValue, deliberately: that
@@ -28,6 +29,9 @@ export const getExchangeReplacementUnitController = async (req, res) => {
         const sale = await Sale.findOne({ _id: id, isDeleted: false });
         if (!sale) {
             return errorResponse(res, "Sale not found", 404);
+        }
+        if (!canAccessSaleBranch(req.user, sale.branchId)) {
+            return errorResponse(res, OTHER_BRANCH_SALE_MESSAGE, 403);
         }
 
         const trimmedSerial = barcodeValue.trim().toUpperCase();

@@ -2,6 +2,7 @@
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import StockMovement from "../../models/StockMovement.model.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
+import { canAccessSaleBranch } from "../../services/sale/saleBranchAccess.js";
 import { canViewInventoryCost } from "../../utils/stripInventoryCostFields.js";
 import { getAgeStart, daysSince } from "../../services/inventory/serialAge.js";
 
@@ -47,7 +48,7 @@ export const getSerializedItemDetailController = async (req, res) => {
             .populate("assignedBranchId", "name code")
             .populate({
                 path: "saleId",
-                select: "saleNumber saleDate totalAmount customerId",
+                select: "saleNumber saleDate totalAmount customerId branchId",
                 populate: { path: "customerId", select: "name mobile" },
             });
 
@@ -177,7 +178,9 @@ export const getSerializedItemDetailController = async (req, res) => {
             transferDate: item.transferredAt || null,
             currentBranch: item.currentBranchId ? { _id: item.currentBranchId._id, name: item.currentBranchId.name, code: item.currentBranchId.code } : null,
             assignedBranch: item.assignedBranchId ? { _id: item.assignedBranchId._id, name: item.assignedBranchId.name, code: item.assignedBranchId.code } : null,
-            sale: item.saleId ? {
+            // The sale (and its customer) only for the branch that made it -
+            // another branch checking this unit's stock never sees who bought it.
+            sale: item.saleId && canAccessSaleBranch(user, item.saleId.branchId) ? {
                 saleNumber: item.saleId.saleNumber,
                 saleDate: item.saleId.saleDate,
                 totalAmount: item.saleId.totalAmount,

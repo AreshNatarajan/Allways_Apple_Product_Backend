@@ -5,6 +5,8 @@ import authMiddleware from '../../middleware/authMiddleware.js';
 import onlySuperAdmin from '../../middleware/onlySuperAdmin.js';
 import onlyBranchRoles from '../../middleware/onlyBranchRoles.js';
 import requirePermission, { requireAnyPermission } from '../../middleware/requirePermission.js';
+// Every /:id route below: the sale must be the user's own branch's (SUPER_ADMIN: any).
+import requireSaleBranch from '../../middleware/requireSaleBranch.js';
 
 // 1. Import the controller function
 import { createSaleController } from '../../controllers/sale/createSale.controller.js';
@@ -89,13 +91,13 @@ router.post('/upload-selfie', authMiddleware, onlyBranchRoles, requirePermission
 // (setSaleInvoiceFileController below) so setting one field never goes
 // through updateSaleController's much heavier edit-sale side effects.
 router.post('/upload-invoice', authMiddleware, requireAnyPermission(SALE_INVOICE_PERMISSIONS), uploadSaleInvoiceController);
-router.patch('/:id/invoice', authMiddleware, requireAnyPermission(SALE_INVOICE_PERMISSIONS), setSaleInvoiceFileController);
+router.patch('/:id/invoice', authMiddleware, requireSaleBranch, requireAnyPermission(SALE_INVOICE_PERMISSIONS), setSaleInvoiceFileController);
 
 // Plain read action (same access level as GET /:id below) - streams the
 // already-generated invoice PDF back with a real Content-Disposition
 // filename, see downloadSaleInvoice.controller.js for why this can't
 // just be a direct S3 URL fetch from the browser.
-router.get('/:id/invoice/download', authMiddleware, downloadSaleInvoiceController);
+router.get('/:id/invoice/download', authMiddleware, requireSaleBranch, downloadSaleInvoiceController);
 
 // EOD review - `/:id/review` is more specific than the generic `GET
 // /:id` below, but still kept ahead of it for clarity/consistency.
@@ -112,8 +114,8 @@ router.patch('/:id/review', authMiddleware, onlySuperAdmin, reviewSaleController
 // and reviewSale.controller.js's one /:id/review action covers it -
 // create/edit/return/exchange all share that single approve/reject,
 // never their own independent one.
-router.post('/:id/return', authMiddleware, requirePermission('sale.return'), createSaleReturnController);
-router.get('/:id/returns', authMiddleware, getSaleReturnsController);
+router.post('/:id/return', authMiddleware, requireSaleBranch, requirePermission('sale.return'), createSaleReturnController);
+router.get('/:id/returns', authMiddleware, requireSaleBranch, getSaleReturnsController);
 
 // Sale Exchange - same reasoning as Return above (no onlyBranchRoles,
 // requirePermission('sale.exchange') lets SUPER_ADMIN through
@@ -125,23 +127,23 @@ router.get('/:id/returns', authMiddleware, getSaleReturnsController);
 // SUPER_ADMIN entirely (they have no branchId) even though SUPER_ADMIN
 // is explicitly allowed to process an exchange. This scopes to the
 // SALE's own branch instead, matching who's actually allowed here.
-router.get('/:id/exchange-scanner/:barcodeValue', authMiddleware, requirePermission('sale.exchange'), getExchangeReplacementUnitController);
-router.post('/:id/exchange', authMiddleware, requirePermission('sale.exchange'), createSaleExchangeController);
-router.get('/:id/exchanges', authMiddleware, getSaleExchangesController);
+router.get('/:id/exchange-scanner/:barcodeValue', authMiddleware, requireSaleBranch, requirePermission('sale.exchange'), getExchangeReplacementUnitController);
+router.post('/:id/exchange', authMiddleware, requireSaleBranch, requirePermission('sale.exchange'), createSaleExchangeController);
+router.get('/:id/exchanges', authMiddleware, requireSaleBranch, getSaleExchangesController);
 
 // Post-Sale Type 2 Exchange (Trade-In) - same reasoning as Return/
 // Exchange above (no onlyBranchRoles, requirePermission('sale.tradeIn')
 // lets SUPER_ADMIN through unconditionally, no separate review route -
 // reviewSale.controller.js's cascade covers this too).
-router.post('/:id/trade-in', authMiddleware, requirePermission('sale.tradeIn'), createSaleTradeInController);
+router.post('/:id/trade-in', authMiddleware, requireSaleBranch, requirePermission('sale.tradeIn'), createSaleTradeInController);
 // Edit a sale's trade-in(s) + the customer's details (see saleTradeInEdit.controller.js).
 const TRADE_IN_EDIT_PERMISSIONS = ['sale.edit', 'sale.tradeIn'];
-router.get('/:id/trade-in-edit', authMiddleware, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), getSaleTradeInEditController);
-router.put('/:id/trade-in-edit', authMiddleware, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), updateSaleTradeInController);
-router.get('/:id/trade-ins', authMiddleware, getSaleTradeInsController);
+router.get('/:id/trade-in-edit', authMiddleware, requireSaleBranch, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), getSaleTradeInEditController);
+router.put('/:id/trade-in-edit', authMiddleware, requireSaleBranch, requireAnyPermission(TRADE_IN_EDIT_PERMISSIONS), updateSaleTradeInController);
+router.get('/:id/trade-ins', authMiddleware, requireSaleBranch, getSaleTradeInsController);
 
 // Add route for getting sale by ID
-router.get('/:id', authMiddleware, getSaleByIdController);
+router.get('/:id', authMiddleware, requireSaleBranch, getSaleByIdController);
 
 // 2. Change the route handler to use the imported controller
 
@@ -155,6 +157,6 @@ router.post('/create', authMiddleware, onlyBranchRoles, requirePermission('sale.
 // sale.edit. updateSaleController still resets EOD review for a
 // non-SUPER_ADMIN editor and clears it for a SUPER_ADMIN editor itself,
 // unaffected by this gate.
-router.put('/:id', authMiddleware, requirePermission('sale.edit'), updateSaleController);
+router.put('/:id', authMiddleware, requireSaleBranch, requirePermission('sale.edit'), updateSaleController);
 
 export default router;
