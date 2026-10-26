@@ -218,6 +218,14 @@ const productSerialSchema = new mongoose.Schema(
       default: false,
     },
 
+    // E-commerce website visibility only (ERP Inventory always shows the
+    // unit). Units created before this field existed have no value and
+    // stay visible - public queries match `showOnStorefront: { $ne: false }`.
+    showOnStorefront: {
+      type: Boolean,
+      default: true,
+    },
+
     // Output GST (margin-scheme) is NOT decided or stored at purchase
     // time - it's a different concept from purchaseGstPercent above,
     // read fresh from GstConfig.marginSchemeRate at the moment of sale
