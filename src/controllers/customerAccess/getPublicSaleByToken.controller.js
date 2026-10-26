@@ -1,6 +1,7 @@
 import Sale from "../../models/Sale.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 import { sendSaleInvoicePdf } from "../sale/downloadSaleInvoice.controller.js";
+import { resolveShortCodeToToken } from "../../services/sale/customerShortLink.js";
 
 const isWellFormedToken = (token) => !!token && typeof token === "string" && token.length >= 32;
 
@@ -73,6 +74,25 @@ export const getPublicSaleByTokenController = async (req, res) => {
     } catch (error) {
         console.error("Get Public Sale By Token Error:", error);
         return errorResponse(res, "Failed to retrieve invoice", 500);
+    }
+};
+
+// PUBLIC - the invoice app's /i/:code page (short links from "Copy
+// Message"). Answers with the sale's CURRENT token and nothing else; the
+// app then opens its normal /invoice/:token page, which does every
+// usual check. Unknown, malformed, deleted-sale and no-token codes all
+// get the same generic 404 as a wrong token. Rate-limited in the router.
+export const resolveCustomerShortLinkController = async (req, res) => {
+    try {
+        res.set("Cache-Control", "no-store");
+        const token = await resolveShortCodeToToken(req.params.code);
+        if (!isWellFormedToken(token)) {
+            return errorResponse(res, "Invoice link is invalid or has expired", 404);
+        }
+        return successResponse(res, "Invoice link resolved", { token });
+    } catch (error) {
+        console.error("Resolve Customer Short Link Error:", error?.message);
+        return errorResponse(res, "Failed to open invoice link", 500);
     }
 };
 
