@@ -147,6 +147,8 @@ export const getSerializedItemDetailController = async (req, res) => {
             serialNumber: item.serialNumber,
             barcode: item.serialNumber,
             status: item.status,
+            // E-commerce website visibility (missing on older units = visible).
+            showOnStorefront: item.showOnStorefront !== false,
             // Product-level fields only - name/category/HSN describe the
             // model in general. description/images are deliberately NOT
             // included here: for a serialized unit, Product.description/

@@ -18,7 +18,7 @@ export const getPublicStorefrontProductByIdController = async (req, res) => {
         }
 
         // An iCloud unit is hidden from the storefront - a direct link 404s too.
-        const serial = await ProductSerial.findOne({ _id: id, isDeleted: false, status: "AVAILABLE", icloud: { $ne: true } })
+        const serial = await ProductSerial.findOne({ _id: id, isDeleted: false, status: "AVAILABLE", icloud: { $ne: true }, showOnStorefront: { $ne: false } })
             .populate("productId", "name category modelNumber")
             .populate("currentBranchId", PUBLIC_SHOWROOM_FIELDS)
             .select("productId currentBranchId serialNumber sellingPrice description notes mdm images")

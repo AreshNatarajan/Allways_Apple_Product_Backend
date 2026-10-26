@@ -43,7 +43,7 @@ export const getPublicStorefrontProductsController = async (req, res) => {
 
         // iCloud units are never shown on the public storefront ($ne keeps
         // older units with no icloud value visible).
-        const filter = { isDeleted: false, status: "AVAILABLE", icloud: { $ne: true } };
+        const filter = { isDeleted: false, status: "AVAILABLE", icloud: { $ne: true }, showOnStorefront: { $ne: false } };
 
         if (branchId?.trim() && branchId !== "ALL") {
             filter.currentBranchId = branchId.trim();
