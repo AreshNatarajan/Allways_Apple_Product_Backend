@@ -12,3 +12,11 @@ export const INVOICE_APP_DEFAULT_URL = "https://shopping-invoice.onrender.com";
 export const CUSTOMER_APP_URL = (process.env.INVOICE_APP_URL || INVOICE_APP_DEFAULT_URL).replace(/\/+$/, "");
 
 export const buildCustomerLink = (token) => (token ? `${CUSTOMER_APP_URL}/invoice/${token}` : null);
+
+// Short invoice links (<base>/i/<code>) open on the same invoice app,
+// whose /i/:code page swaps the code for the real link. Set
+// SHORT_LINK_BASE_URL only when a shorter/branded domain is pointed at
+// that same app - it must serve /i/:code too.
+export const SHORT_LINK_BASE_URL = (process.env.SHORT_LINK_BASE_URL || CUSTOMER_APP_URL).replace(/\/+$/, "");
+
+export const buildShortLink = (code) => (code ? `${SHORT_LINK_BASE_URL}/i/${code}` : null);

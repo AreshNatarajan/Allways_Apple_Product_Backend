@@ -748,6 +748,16 @@ const salesSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Short code for the "Copy Message" invoice link (<base>/i/<code>,
+    // see services/sale/customerShortLink.js). Not a credential of its
+    // own - it only ever resolves to THIS sale's current
+    // customerAccessToken, so a deleted sale or a cleared token makes it
+    // dead too. Set once, never re-pointed at another sale. No default:
+    // the field is simply absent until staff first copy the message.
+    customerShortCode: {
+      type: String,
+    },
+
     // ----------------------------------------------------------
     // STATUS
     // ----------------------------------------------------------
@@ -842,6 +852,14 @@ salesSchema.index({ isDeleted: 1, status: 1, branchId: 1, saleDate: -1 });
 // itself, so a collision could never silently grant access to the
 // wrong sale.
 salesSchema.index({ customerAccessToken: 1 }, { unique: true, sparse: true });
+// Short-link lookup (resolveCustomerShortLink) - unique so two sales can
+// never share a code (a generation collision fails the write and is
+// retried with a fresh code). Partial on string values: only sales that
+// actually have a code are indexed.
+salesSchema.index(
+  { customerShortCode: 1 },
+  { unique: true, partialFilterExpression: { customerShortCode: { $type: "string" } } }
+);
 
 // ============================================================
 // FIELD-LEVEL HISTORICAL FREEZE

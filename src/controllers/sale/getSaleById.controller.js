@@ -1,7 +1,7 @@
 // controllers/sale/getSaleById.controller.js
 import Sale from "../../models/Sale.modal.js";
 import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
-import { buildCustomerLink } from "../../config/customerApp.js";
+import { buildCustomerLink, buildShortLink } from "../../config/customerApp.js";
 import {
     successResponse,
     errorResponse,
@@ -142,6 +142,9 @@ export const getSaleByIdController = async (req, res) => {
             // (that's the only place customerAccessToken gets set - see
             // setSaleInvoiceFile.controller.js).
             customerLink: buildCustomerLink(sale.customerAccessToken),
+            // Set once staff first use "Copy Message" (see
+            // createCustomerShortLink.controller.js); dead without a token.
+            customerShortLink: sale.customerAccessToken ? buildShortLink(sale.customerShortCode) : null,
             summary: {
                 totalItems,
                 serializedItems,
