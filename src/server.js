@@ -94,6 +94,7 @@ import transferRouter from './routes/transfer/transfer.router.js'
 import userRouter from "./routes/users/user.router.js";
 import storefrontRouter from "./routes/storefront/storefront.router.js";
 import publicStorefrontRouter from "./routes/storefront/publicStorefront.router.js";
+import productShareRouter from "./routes/storefront/productShare.router.js";
 import serviceVendorRouter from "./routes/serviceVendor/serviceVendor.router.js";
 import serviceRouter from "./routes/service/service.router.js";
 import publicCustomerAccessRouter from "./routes/customerAccess/publicCustomerAccess.router.js";
@@ -177,6 +178,10 @@ app.use('/api/storefront', storefrontRouter);
 // its own top-level mount (not nested under /api/storefront) so the
 // "this whole prefix needs no login" boundary is obvious at a glance.
 app.use('/api/public/storefront', publicStorefrontRouter);
+// PUBLIC - shared storefront product links with a per-product link
+// preview (see productShare.controller.js). Short top-level path on
+// purpose: it's the URL customers see in WhatsApp.
+app.use('/p', productShareRouter);
 // PUBLIC - no authMiddleware, consumed by shopping-commerce's
 // /customer/:token page. A DIFFERENT prefix from the existing
 // (authenticated, staff-only) /api/customer CRM router above -
