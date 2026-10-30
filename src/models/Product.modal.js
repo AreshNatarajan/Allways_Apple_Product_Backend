@@ -41,15 +41,38 @@ const productSchema = new mongoose.Schema(
     // have legacy data here - never trust this as per-unit data going
     // forward, and never silently fall back to it for a serialized
     // unit's display.
-    //
-    // Note: non-serialized products have no image concept at all.
-    // Serialized units still carry their own images on
-    // ProductSerial.images, untouched by this.
     description: {
       type: String,
       trim: true,
       default: "",
     },
+
+    // Product photos - NON-SERIALIZED PRODUCTS ONLY (shared across every
+    // batch of the product). A serialized unit's photos live on
+    // ProductSerial.images instead and are never stored here; the upload
+    // endpoint rejects a serialized product. Changed only via
+    // POST/DELETE /product/:id/images (uploadProductImages /
+    // removeProductImage controllers), never via create/update JSON.
+    // Same shape as before these were removed in Aug 2026, so any
+    // product that still holds them keeps loading unchanged. images[0]
+    // is the main/cover photo.
+    images: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+
+    // S3 object keys behind each images[] URL, same index alignment as
+    // images[] - needed to remove individual images without parsing keys
+    // back out of public URLs (same pattern as Branch.logoKey /
+    // User.profilePhotoKey).
+    imageKeys: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
 
     // =========================
     // PRODUCT TYPE
