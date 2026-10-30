@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 
 import authMiddleware from '../../middleware/authMiddleware.js';
-import requirePermission from '../../middleware/requirePermission.js';
+import requirePermission, { requireAnyPermission } from '../../middleware/requirePermission.js';
 
 import { createProductController } from '../../controllers/product/createProduct.controller.js';
 import { getProductsController } from '../../controllers/product/getProducts.controller.js';
@@ -12,6 +12,8 @@ import { deleteProductController } from '../../controllers/product/deleteProduct
 import { reactivateProductController } from '../../controllers/product/reactivateProduct.controller.js';
 import { statsProductController } from '../../controllers/product/statsProduct.controller.js';
 import { getProductOptionsController } from '../../controllers/product/searchProduct.controller.js';
+import { uploadProductImagesController } from '../../controllers/product/uploadProductImages.controller.js';
+import { removeProductImageController } from '../../controllers/product/removeProductImage.controller.js';
 
 // Read endpoints - any authenticated role (incl. STAFF) can browse products.
 router.get('/options', authMiddleware, getProductOptionsController);
@@ -31,5 +33,11 @@ router.post('/create', authMiddleware, requirePermission('product.create'), crea
 router.put('/:id', authMiddleware, requirePermission('product.edit'), updateProductController);
 router.delete('/:id', authMiddleware, requirePermission('product.status'), deleteProductController);
 router.patch('/:id/reactivate', authMiddleware, requirePermission('product.status'), reactivateProductController);
+
+// Non-serialized product photos. Upload: product.create too, since the
+// Create Product form uploads its picked images right after creating
+// the product. Remove: product.edit only.
+router.post('/:id/images', authMiddleware, requireAnyPermission(['product.create', 'product.edit']), uploadProductImagesController);
+router.delete('/:id/images', authMiddleware, requirePermission('product.edit'), removeProductImageController);
 
 export default router;
