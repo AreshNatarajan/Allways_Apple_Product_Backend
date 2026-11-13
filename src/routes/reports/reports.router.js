@@ -8,6 +8,7 @@ import onlySuperAdmin from "../../middleware/onlySuperAdmin.js";
 import { getProfitLossController } from "../../controllers/reports/getProfitLoss.controller.js";
 import { getInOutReportController } from "../../controllers/reports/getInOutReport.controller.js";
 import { getDailyStockReportController } from "../../controllers/reports/getDailyStockReport.controller.js";
+import { getDailySalesTextReportController } from "../../controllers/reports/getDailySalesTextReport.controller.js";
 
 // Profit & Loss is permanently Super Admin-only, like Branch/User
 // management and EOD review - see config/permissionCatalog.js's
@@ -18,5 +19,6 @@ import { getDailyStockReportController } from "../../controllers/reports/getDail
 router.get("/profit-loss", authMiddleware, onlySuperAdmin, getProfitLossController);
 router.get("/in-out", authMiddleware, getInOutReportController);
 router.get("/daily-stock", authMiddleware, getDailyStockReportController);
+router.get("/daily-sales-text", authMiddleware, getDailySalesTextReportController);
 
 export default router;
