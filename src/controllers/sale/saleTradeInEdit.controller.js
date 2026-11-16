@@ -55,6 +55,10 @@ const validationError = (message, statusCode = 400) => {
     return err;
 };
 
+// Showroom re-exchange (Type 2) entries are our own previously-sold units
+// taken back - they have no trade-in Purchase and are never editable here.
+const isExternalTradeIn = (it) => it?.exchangeKind !== "SHOWROOM_UNIT";
+
 const itemsValue = (items) => round2((items || []).reduce((s, it) => s + (Number(it.purchasePrice) || 0) * (it.isSerialized ? 1 : Number(it.quantity) || 0), 0));
 
 const canEditSale = (user, sale) => canAccessSaleBranch(user, sale.branchId);
@@ -88,7 +92,7 @@ export const getSaleTradeInEditController = async (req, res) => {
 
         const groups = [];
         if (sale.tradeInEnabled && sale.tradeInPurchaseId) {
-            groups.push({ key: "SALE", label: "Trade-in at sale", at: sale.saleDate, items: sale.tradeInItems || [], purchaseId: sale.tradeInPurchaseId, totalValue: sale.tradeInTotalValue || itemsValue(sale.tradeInItems), valueLockReason: null });
+            groups.push({ key: "SALE", label: "Trade-in at sale", at: sale.saleDate, items: (sale.tradeInItems || []).filter(isExternalTradeIn), purchaseId: sale.tradeInPurchaseId, totalValue: itemsValue((sale.tradeInItems || []).filter(isExternalTradeIn)), valueLockReason: null });
         }
         const postSale = await SaleTradeIn.find({ saleId: sale._id, isDeleted: false }).sort({ createdAt: 1 }).lean();
         for (const t of postSale) {
@@ -227,7 +231,7 @@ export const updateSaleTradeInController = async (req, res) => {
             let purchaseId;
             if (tradeInKey === "SALE") {
                 if (!sale.tradeInEnabled || !sale.tradeInPurchaseId) throw validationError("This sale has no trade-in");
-                items = sale.tradeInItems;
+                items = sale.tradeInItems.filter(isExternalTradeIn);
                 purchaseId = sale.tradeInPurchaseId;
             } else {
                 if (!tradeInKey || !mongoose.Types.ObjectId.isValid(tradeInKey)) throw validationError("Choose which trade-in to edit");
@@ -246,7 +250,10 @@ export const updateSaleTradeInController = async (req, res) => {
 
             for (const edit of itemEdits) {
                 const entry = items.find((it) => it.productSerialId && String(it.productSerialId) === String(edit?.productSerialId));
-                if (!entry) throw validationError("That unit isn't on this trade-in");
+                if (!entry) {
+                    const t2 = (sale.tradeInItems || []).some((it) => !isExternalTradeIn(it) && it.productSerialId && String(it.productSerialId) === String(edit?.productSerialId));
+                    throw validationError(t2 ? "This unit is a returned showroom product (exchange), not an external trade-in, so it can't be edited here" : "That unit isn't on this trade-in");
+                }
                 if (!entry.isSerialized) throw validationError("Quantity items can't be edited here");
 
                 const serial = await ProductSerial.findOne({ _id: entry.productSerialId, purchaseId: purchase._id, isDeleted: false }).session(session);
@@ -366,7 +373,7 @@ export const updateSaleTradeInController = async (req, res) => {
             if (delta !== 0) {
                 const newPending = round2(sale.pendingAmount - delta);
                 if (tradeInKey === "SALE") {
-                    if (newValue > sale.totalAmount) throw validationError("The trade-in value can't be more than the sale amount");
+                    if (round2((sale.tradeInTotalValue || 0) + delta) > sale.totalAmount) throw validationError("The trade-in value can't be more than the sale amount");
                 } else if (tradeInDoc.settlementType === "COMPANY_REFUNDS") {
                     throw validationError("A refund was already paid for this trade-in, so its value can't change. Photos, descriptions, MDM and iCloud can still be edited.");
                 }
@@ -377,7 +384,7 @@ export const updateSaleTradeInController = async (req, res) => {
                 saleChanges.push({ field: "tradeInValue", label: "Trade-in value", oldValue, newValue });
                 saleChanges.push({ field: "pendingAmount", label: "Pending amount", oldValue: sale.pendingAmount, newValue: newPending });
                 if (tradeInKey === "SALE") {
-                    sale.tradeInTotalValue = newValue;
+                    sale.tradeInTotalValue = round2((sale.tradeInTotalValue || 0) + delta);
                     sale.netPayableAmount = round2((sale.netPayableAmount ?? round2(sale.totalAmount - oldValue)) - delta);
                 } else {
                     tradeInDoc.totalValue = newValue;

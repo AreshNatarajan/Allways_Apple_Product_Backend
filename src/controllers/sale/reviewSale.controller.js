@@ -4,6 +4,7 @@ import Sale from "../../models/Sale.modal.js";
 import SaleReturn from "../../models/SaleReturn.modal.js";
 import SaleExchange from "../../models/SaleExchange.modal.js";
 import SaleTradeIn from "../../models/SaleTradeIn.modal.js";
+import SaleShowroomExchange from "../../models/SaleShowroomExchange.modal.js";
 import { successResponse, errorResponse } from "../../utils/responseHandler.js";
 
 // EOD (End of Day) audit review - SUPER_ADMIN marks a non-SUPER_ADMIN-
@@ -67,6 +68,13 @@ export const reviewSaleController = async (req, res) => {
 
         await SaleTradeIn.updateMany(
             { saleId: id, isDeleted: false, processStatus: "PENDING_REVIEW" },
+            { processStatus: decision, reviewedBy: user._id, reviewedAt }
+        );
+
+        // Review status only - never reverses the unit's return to stock
+        // or reopens the original sale (Phase 1 rule).
+        await SaleShowroomExchange.updateMany(
+            { newSaleId: id, isDeleted: false, processStatus: "PENDING_REVIEW" },
             { processStatus: decision, reviewedBy: user._id, reviewedAt }
         );
 

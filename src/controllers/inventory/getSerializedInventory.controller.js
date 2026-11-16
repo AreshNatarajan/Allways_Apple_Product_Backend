@@ -197,6 +197,9 @@ export const getSerializedInventoryController = async (req, res) => {
             };
             if (canViewCost) {
                 row.purchasePrice = item.purchasePrice || 0;
+                // Current cost basis (differs from purchasePrice only after a
+                // showroom re-exchange); cost viewers only.
+                row.currentCostBasis = item.currentCostBasis ?? null;
                 row.vendorId = item.purchaseId?.vendorId?._id || null;
                 // Snapshot-first (matches PurchaseRow.jsx/VendorDetailsCard.jsx's
                 // own explicit convention) - a purchase's vendor display

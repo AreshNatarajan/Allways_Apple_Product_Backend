@@ -18,6 +18,7 @@ const MOVEMENT_LABELS = {
     TRANSFER_IN: { label: "Transfer", description: "Received from another branch" },
     SALE: { label: "Sale", description: "Sold to a customer" },
     RETURN: { label: "Return", description: "Returned by customer" },
+    SHOWROOM_EXCHANGE_RETURN: { label: "Exchange Return", description: "Our own sold unit taken back in a new sale (showroom re-exchange)" },
     DAMAGE: { label: "Damage", description: "Marked as damaged" },
     REJECT: { label: "Reject", description: "Rejected during receive" },
     ADJUSTMENT: { label: "Adjustment", description: "Manual stock adjustment" },
@@ -138,6 +139,7 @@ export const getSerializedItemDetailController = async (req, res) => {
             purchaseDetails.gstApplicable = !!item.gstApplicable;
             purchaseDetails.purchaseDate = purchaseDate;
             purchaseDetails.purchasePrice = item.purchasePrice || 0;
+            purchaseDetails.currentCostBasis = item.currentCostBasis ?? null;
             purchaseDetails.purchaseGstPercent = item.purchaseGstPercent || 0;
             purchaseDetails.purchaseGstAmount = item.purchaseGstAmount || 0;
         }

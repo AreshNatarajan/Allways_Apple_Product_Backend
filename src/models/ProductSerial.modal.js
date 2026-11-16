@@ -81,6 +81,18 @@ const productSerialSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // CURRENT inventory acquisition cost - see
+    // services/inventory/serialCostBasis.js. null = never re-acquired,
+    // effective cost is purchasePrice. Set ONLY by a Type 2 (showroom
+    // product re-exchange) to the staff-entered exchange value;
+    // purchasePrice above is the original historical purchase cost and
+    // is never rewritten by it. Admin-only, like purchasePrice.
+    currentCostBasis: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
     sellingPrice: {
       type: Number,
       required: true,

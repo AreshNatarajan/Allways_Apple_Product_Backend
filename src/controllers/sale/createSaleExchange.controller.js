@@ -1,4 +1,5 @@
 // controllers/sale/createSaleExchange.controller.js
+import { effectiveSerialCost } from "../../services/inventory/serialCostBasis.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import SaleExchange from "../../models/SaleExchange.modal.js";
@@ -159,7 +160,7 @@ export const createSaleExchangeController = async (req, res) => {
 
         const gstConfig = await getOrCreateGstConfig({ session });
 
-        const newPurchasePrice = newSerial.purchasePrice || 0;
+        const newPurchasePrice = effectiveSerialCost(newSerial);
         const newGstApplicable = newSerial.gstApplicable || false;
         const newGstPercent = gstConfig.marginSchemeRate || 0;
         const newHsnCode = newSerial.hsnCode || newProduct.hsnCode || "";

@@ -23,6 +23,7 @@ const stockMovementSchema = new mongoose.Schema(
         "PURCHASE_RECEIVE_DIRECT",   // BRANCH_ADMIN direct purchase
         "PURCHASE_RECEIVE_CENTRAL",  // SUPER_ADMIN purchase, received at branch
         "CUSTOMER_EXCHANGE_RECEIVE", // Type 2 Exchange - customer trade-in received into stock
+        "SHOWROOM_EXCHANGE_RETURN",  // Showroom Re-Exchange - one of OUR OWN sold units comes back into stock (existing ProductSerial, no new Purchase)
         "TRANSFER_OUT",
         "TRANSFER_IN",
         "SALE",
@@ -129,7 +130,7 @@ const stockMovementSchema = new mongoose.Schema(
     // document without guessing which collection to look in.
     referenceType: {
       type: String,
-      enum: ["Purchase", "PendingReceive", "ReceiveHistory", "Transfer", "Sale", "SaleReturn", "SaleExchange", "Service", "PurchaseReturn"],
+      enum: ["Purchase", "PendingReceive", "ReceiveHistory", "Transfer", "Sale", "SaleReturn", "SaleExchange", "Service", "PurchaseReturn", "SaleShowroomExchange"],
       required: true,
       immutable: true,
     },
@@ -289,7 +290,7 @@ stockMovementSchema.index({ type: 1, performedAt: -1 });
 // $lt/$lte/$type/$and - there is no $ne/$or, so "every referenceType"
 // is expressed as one $eq-scoped index per type rather than a single
 // negated one.
-const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale", "Transfer", "SaleReturn", "SaleExchange", "Service", "PurchaseReturn"];
+const DEDUPED_REFERENCE_TYPES = ["Purchase", "PendingReceive", "ReceiveHistory", "Sale", "Transfer", "SaleReturn", "SaleExchange", "Service", "PurchaseReturn", "SaleShowroomExchange"];
 DEDUPED_REFERENCE_TYPES.forEach((referenceType) => {
   stockMovementSchema.index(
     { referenceType: 1, referenceId: 1, batchId: 1, serialId: 1, type: 1 },

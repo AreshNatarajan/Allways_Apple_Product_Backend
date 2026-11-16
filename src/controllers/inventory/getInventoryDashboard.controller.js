@@ -1,4 +1,5 @@
 // controllers/inventory/getInventoryDashboard.controller.js
+import { effectiveSerialCost, COST_BASIS_EXPR } from "../../services/inventory/serialCostBasis.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
@@ -53,7 +54,7 @@ export const getInventoryDashboardController = async (req, res) => {
             ];
         }
         const serials = await ProductSerial.find(serialFilter)
-            .select("productId status purchasePrice sellingPrice")
+            .select("productId status purchasePrice currentCostBasis sellingPrice")
             .lean();
 
         // ---- non-serialized side ----
@@ -75,7 +76,7 @@ export const getInventoryDashboardController = async (req, res) => {
             const key = s.productId.toString();
             serializedProductIds.add(key);
             if (s.status === "AVAILABLE") {
-                serialPurchaseValue += s.purchasePrice || 0;
+                serialPurchaseValue += effectiveSerialCost(s);
                 serialSellingValue += s.sellingPrice || 0;
                 serialAvailableStock += 1;
                 serialAvailByProduct.set(key, (serialAvailByProduct.get(key) || 0) + 1);
