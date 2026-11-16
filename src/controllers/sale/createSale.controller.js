@@ -1,4 +1,5 @@
 // controllers/sale/createSale.controller.js
+import { effectiveSerialCost } from "../../services/inventory/serialCostBasis.js";
 import { normalizeCardCharge, validateCardCharge, sumConvenienceFee } from "../../services/sale/cardCharges.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
@@ -13,6 +14,12 @@ import { recordStockMovement } from "../../services/purchase/recordStockMovement
 import { getOrCreateGstConfig } from "../../services/gstConfig/getOrCreateGstConfig.js";
 import { generateDocumentNumber } from "../../services/documentNumber.service.js";
 import { processTradeIn } from "../../services/sale/tradeInProcessor.service.js";
+import {
+    isShowroomUnitItem,
+    resolveShowroomUnits,
+    commitShowroomExchange,
+    buildShowroomEmbed,
+} from "../../services/sale/showroomExchangeProcessor.service.js";
 import {
     successResponse,
     errorResponse,
@@ -307,7 +314,7 @@ export const createSaleController = async (req, res) => {
                 // Purchase's items[] by productId, which can silently
                 // match a DIFFERENT unit of the same product bought in
                 // the same purchase.
-                purchasePrice = serialRecord.purchasePrice || 0;
+                purchasePrice = effectiveSerialCost(serialRecord);
                 gstApplicable = serialRecord.gstApplicable || false;
                 // Margin-scheme output GST - read fresh from the current
                 // GstConfig, never from ProductSerial.saleGstPercent
@@ -601,15 +608,28 @@ export const createSaleController = async (req, res) => {
         // ============================================================
 
         let totalExchangeValue = 0;
+        let type1Items = [];
+        let type2Items = [];
+        let showroomUnits = [];
         if (tradeInEnabled) {
             if (!Array.isArray(tradeInItems) || tradeInItems.length === 0) {
                 return rollback("At least one exchange item is required");
             }
+            // Partition: Type 1 (external trade-in, unchanged path) vs
+            // Type 2 (our own previously-sold unit coming back). Type 2 is
+            // validated here, server-side, from the serial number alone.
+            type2Items = tradeInItems.filter(isShowroomUnitItem);
+            type1Items = tradeInItems.filter((it) => !isShowroomUnitItem(it));
+            if (type2Items.length > 0) {
+                const r2 = await resolveShowroomUnits({ items: type2Items, session });
+                if (r2.error) return rollback(r2.error);
+                showroomUnits = r2.units;
+            }
             totalExchangeValue = round2(
-                tradeInItems.reduce((sum, it) => {
+                type1Items.reduce((sum, it) => {
                     const qty = it.isSerialized ? 1 : (Number(it.quantity) || 0);
                     return sum + (Number(it.purchasePrice) || 0) * qty;
-                }, 0)
+                }, 0) + showroomUnits.reduce((sum, u) => sum + u.exchangeValue, 0)
             );
             if (totalExchangeValue <= 0) {
                 return rollback("Exchange value must be greater than 0");
@@ -667,12 +687,15 @@ export const createSaleController = async (req, res) => {
             // system vendor's own generic name - see
             // tradeInProcessor.service.js for where this is used.
             const customer = await Customer.findById(customerId).session(session);
-            const result = await processTradeIn({ tradeInItems, branchId, saleNumber, customerName: customer?.name || "", gstConfig, user, session });
-            if (result.error) {
-                return rollback(result.error);
+            if (type1Items.length > 0) {
+                const result = await processTradeIn({ tradeInItems: type1Items, branchId, saleNumber, customerName: customer?.name || "", gstConfig, user, session });
+                if (result.error) {
+                    return rollback(result.error);
+                }
+                tradeInItemsEmbed = result.tradeInItemsEmbed;
+                tradeInPurchaseId = result.purchaseId;
             }
-            tradeInItemsEmbed = result.tradeInItemsEmbed;
-            tradeInPurchaseId = result.purchaseId;
+            tradeInItemsEmbed = [...tradeInItemsEmbed, ...buildShowroomEmbed(showroomUnits)];
         }
 
         // ============================================================
@@ -720,6 +743,14 @@ export const createSaleController = async (req, res) => {
         );
 
         const createdSale = sale[0];
+
+        // Type 2: reuse the surrendered serials (conditional update),
+        // write history + stock movement. Any failure rolls back the
+        // whole sale. Runs before this sale's own serials are marked SOLD.
+        if (showroomUnits.length > 0) {
+            const c = await commitShowroomExchange({ units: showroomUnits, newSale: createdSale, branchId, user, session });
+            if (c.error) return rollback(c.error);
+        }
 
         // ============================================================
         // 8. UPDATE STOCK (Only if NOT DRAFT)

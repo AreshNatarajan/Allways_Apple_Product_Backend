@@ -23,6 +23,7 @@ import { getExchangeReplacementUnitController } from '../../controllers/sale/get
 import { createSaleTradeInController } from '../../controllers/sale/createSaleTradeIn.controller.js';
 import { getSaleTradeInsController } from '../../controllers/sale/getSaleTradeIns.controller.js';
 import { getSaleTradeInEditController, updateSaleTradeInController } from '../../controllers/sale/saleTradeInEdit.controller.js';
+import { lookupShowroomExchangeUnitController } from '../../controllers/sale/lookupShowroomExchangeUnit.controller.js';
 import { getSaleItemBySerialController } from '../../controllers/sale/getSaleItemBySerial.controller.js';
 import { uploadSaleInvoiceController } from '../../controllers/sale/uploadSaleInvoice.controller.js';
 import { setSaleInvoiceFileController } from '../../controllers/sale/setSaleInvoiceFile.controller.js';
@@ -66,6 +67,9 @@ router.get('/stats', authMiddleware, statsSaleController);
 // never collides with GET /:id below regardless of registration order
 // (same convention as purchase.router.js's own /serial/:serialNumber).
 router.get('/serial/:serialNumber', authMiddleware, getSaleItemBySerialController);
+
+// Sale Create: verify a previously-sold showroom unit can be taken back as an exchange (read-only).
+router.get('/showroom-exchange/unit/:serialNumber', authMiddleware, onlyBranchRoles, requirePermission('sale.create'), lookupShowroomExchangeUnitController);
 
 // Add route for getting all sales
 router.get('/', authMiddleware, getAllSalesController);

@@ -1,4 +1,5 @@
 // controllers/sale/updateSale.controller.js
+import { effectiveSerialCost } from "../../services/inventory/serialCostBasis.js";
 import { normalizeCardCharge, validateCardCharge, sumConvenienceFee } from "../../services/sale/cardCharges.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
@@ -19,6 +20,21 @@ import {
 } from "../../utils/responseHandler.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// Same rule as Sale Create: the reference (original) price is fixed, the
+// discount is whatever the actual price falls short of it, never negative,
+// and the actual price may not exceed the reference. The client never
+// supplies the discount; only the actual (final) unit price it typed.
+const deriveUnitDiscount = (referencePrice, actualPriceRaw, label) => {
+    const actual = round2(parseFloat(actualPriceRaw));
+    if (!Number.isFinite(actual) || actual <= 0) {
+        throw buildValidationError(`Selling price must be greater than 0 for ${label}`);
+    }
+    if (actual > round2(referencePrice)) {
+        throw buildValidationError(`Selling price cannot exceed the original price for ${label}`);
+    }
+    return Math.max(0, round2(referencePrice - actual));
+};
 
 const buildValidationError = (message) => {
     const err = new Error(message);
@@ -275,7 +291,7 @@ export const updateSaleController = async (req, res) => {
         // can never mismatch what was actually scanned).
         // ============================================================
         for (const corr of (itemCorrections?.serialized || [])) {
-            const { productSerialId, newSerialNumber, sellingPrice: newSellingPriceRaw, discount: newDiscountRaw, complimentary } = corr || {};
+            const { productSerialId, newSerialNumber, finalPrice: finalPriceRaw, complimentary } = corr || {};
             if (!productSerialId || !mongoose.Types.ObjectId.isValid(productSerialId)) continue;
 
             const idx = workingItems.findIndex((it) => it.isSerialized && String(it.productSerialId) === String(productSerialId));
@@ -293,10 +309,6 @@ export const updateSaleController = async (req, res) => {
 
             const swapValue = newSerialNumber ? newSerialNumber.trim().toUpperCase() : null;
             const swapping = !!swapValue && swapValue !== line.serialNumber;
-            const newSellingPrice = newSellingPriceRaw !== undefined ? parseFloat(newSellingPriceRaw) || 0 : line.sellingPrice;
-            const newDiscount = newDiscountRaw !== undefined ? parseFloat(newDiscountRaw) || 0 : line.discount;
-            const priceChanged = newSellingPrice !== line.sellingPrice || newDiscount !== line.discount;
-
             let targetSerial = currentSerial;
             let targetProduct = null;
 
@@ -326,10 +338,23 @@ export const updateSaleController = async (req, res) => {
                 targetSerial = found;
             }
 
-            const purchasePrice = targetSerial.purchasePrice || 0;
+            const purchasePrice = effectiveSerialCost(targetSerial);
             const gstApplicable = targetSerial.gstApplicable || false;
             const gstPercent = gstApplicable ? (gstConfig.marginSchemeRate || 0) : 0;
             const hsnCode = targetSerial.hsnCode || targetProduct?.hsnCode || line.hsnCode || "";
+
+            // Reference (original) price: the line's stored selling price, or the
+            // swapped-in unit's own price. Discount is derived, never client-set.
+            const referencePrice = swapping && Number(targetSerial.sellingPrice) > 0 ? Number(targetSerial.sellingPrice) : line.sellingPrice;
+            let newSellingPrice = referencePrice;
+            let newDiscount = swapping ? 0 : (line.discount || 0);
+            if (finalPriceRaw !== undefined && finalPriceRaw !== null && finalPriceRaw !== "") {
+                newDiscount = deriveUnitDiscount(referencePrice, finalPriceRaw, targetSerial.serialNumber);
+            } else if (swapping) {
+                newSellingPrice = line.sellingPrice;
+                newDiscount = line.discount || 0;
+            }
+            const priceChanged = newSellingPrice !== line.sellingPrice || newDiscount !== (line.discount || 0);
 
             const subtotal = newSellingPrice;
             const taxableAmount = subtotal - newDiscount;
@@ -421,7 +446,7 @@ export const updateSaleController = async (req, res) => {
         // batch's own record).
         // ============================================================
         for (const corr of (itemCorrections?.nonSerialized || [])) {
-            const { batchId, newBatchId, quantity: newQuantityRaw, sellingPrice: newSellingPriceRaw, discount: newDiscountRaw } = corr || {};
+            const { batchId, newBatchId, quantity: newQuantityRaw, finalPrice: finalPriceRaw } = corr || {};
             if (!batchId) continue;
 
             const idx = workingItems.findIndex((it) => !it.isSerialized && String(it.batchId) === String(batchId));
@@ -437,8 +462,6 @@ export const updateSaleController = async (req, res) => {
 
             const swapping = !!newBatchId && String(newBatchId) !== String(line.batchId);
             const newQuantity = newQuantityRaw !== undefined ? parseFloat(newQuantityRaw) || 0 : line.quantity;
-            const newSellingPrice = newSellingPriceRaw !== undefined ? parseFloat(newSellingPriceRaw) || 0 : line.sellingPrice;
-            const newDiscount = newDiscountRaw !== undefined ? parseFloat(newDiscountRaw) || 0 : line.discount;
             if (newQuantity <= 0) throw buildValidationError(`Quantity must be greater than 0 for ${line.productName}`);
 
             let targetBatchStock = currentBatchStock;
@@ -511,6 +534,16 @@ export const updateSaleController = async (req, res) => {
             const linePurchaseGstAmount = linePurchaseGstPercent > 0 ? round2((purchasePrice * newQuantity * linePurchaseGstPercent) / 100) : 0;
             const hsnCode = targetProduct?.hsnCode || line.hsnCode || "";
 
+            // Stored discount is the line total; derive per-unit from the actual
+            // unit price exactly as Sale Create does (per-unit discount x qty).
+            const oldQty = line.quantity || 1;
+            const oldUnitDiscount = oldQty > 0 ? (line.discount || 0) / oldQty : 0;
+            let newSellingPrice = swapping && Number(targetBatchStock.sellingPrice) > 0 ? Number(targetBatchStock.sellingPrice) : line.sellingPrice;
+            let newDiscount = swapping ? 0 : round2(oldUnitDiscount * newQuantity);
+            if (finalPriceRaw !== undefined && finalPriceRaw !== null && finalPriceRaw !== "") {
+                newDiscount = round2(deriveUnitDiscount(newSellingPrice, finalPriceRaw, line.productName) * newQuantity);
+            }
+
             const subtotal = newSellingPrice * newQuantity;
             const taxableAmount = subtotal - newDiscount;
             if (taxableAmount < 0) throw buildValidationError(`Discount cannot exceed subtotal for ${line.productName}`);
@@ -577,7 +610,7 @@ export const updateSaleController = async (req, res) => {
         // existing sale's branch/session instead of a brand-new one.
         // ============================================================
         for (const row of (newItems?.serialized || [])) {
-            const { productId, serialNumber, sellingPrice: sp, discount: disc } = row || {};
+            const { productId, serialNumber, sellingPrice: sp, discount: disc, finalPrice: fp } = row || {};
             if (!productId || !serialNumber) continue;
 
             const product = await Product.findOne({ _id: productId, isDeleted: false }).session(session);
@@ -586,8 +619,10 @@ export const updateSaleController = async (req, res) => {
             if (!product.hsnCode?.trim()) throw buildValidationError(`${product.name} has no HSN/SAC code set on the product master`);
 
             const sellingPrice = parseFloat(sp) || 0;
-            const discount = parseFloat(disc) || 0;
             if (sellingPrice <= 0) throw buildValidationError(`Selling price must be greater than 0 for ${product.name}`);
+            const discount = (fp !== undefined && fp !== null && fp !== "")
+                ? deriveUnitDiscount(sellingPrice, fp, product.name)
+                : (parseFloat(disc) || 0);
             if (discount < 0) throw buildValidationError(`Discount cannot be negative for ${product.name}`);
 
             const serial = await ProductSerial.findOne({
@@ -598,7 +633,7 @@ export const updateSaleController = async (req, res) => {
             }).session(session);
             if (!serial) throw buildValidationError(`Serial ${serialNumber} is not available at this branch`);
 
-            const purchasePrice = serial.purchasePrice || 0;
+            const purchasePrice = effectiveSerialCost(serial);
             const gstApplicable = serial.gstApplicable || false;
             const gstPercent = gstApplicable ? (gstConfig.marginSchemeRate || 0) : 0;
             const hsnCode = serial.hsnCode || product.hsnCode || "";
@@ -683,7 +718,7 @@ export const updateSaleController = async (req, res) => {
         }
 
         for (const row of (newItems?.nonSerialized || [])) {
-            const { productId, batchId, quantity: qtyRaw, sellingPrice: sp, discount: disc } = row || {};
+            const { productId, batchId, quantity: qtyRaw, sellingPrice: sp, discount: disc, finalPrice: fp } = row || {};
             if (!productId || !batchId) continue;
 
             const product = await Product.findOne({ _id: productId, isDeleted: false }).session(session);
@@ -693,9 +728,11 @@ export const updateSaleController = async (req, res) => {
 
             const quantity = parseFloat(qtyRaw) || 0;
             const sellingPrice = parseFloat(sp) || 0;
-            const discount = parseFloat(disc) || 0;
             if (quantity <= 0) throw buildValidationError(`Quantity must be greater than 0 for ${product.name}`);
             if (sellingPrice <= 0) throw buildValidationError(`Selling price must be greater than 0 for ${product.name}`);
+            const discount = (fp !== undefined && fp !== null && fp !== "")
+                ? round2(deriveUnitDiscount(sellingPrice, fp, product.name) * quantity)
+                : (parseFloat(disc) || 0);
             if (discount < 0) throw buildValidationError(`Discount cannot be negative for ${product.name}`);
 
             const batchStock = await BatchStock.findOne({

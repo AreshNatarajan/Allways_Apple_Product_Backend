@@ -22,6 +22,7 @@
 // Inventory collection, which the earlier audit found drifts stale
 // after every non-serialized Transfer (Transfer never touches it).
 
+import { effectiveSerialCost, COST_BASIS_EXPR } from "../../services/inventory/serialCostBasis.js";
 import mongoose from "mongoose";
 import Branch from "../../models/Branch.modal.js";
 import Product from "../../models/Product.modal.js";
@@ -77,7 +78,7 @@ export const getInventoryAnalyticsController = async (req, res) => {
     const batchFilter = { status: "ACTIVE", ...(branchObjectId ? { branchId: branchObjectId } : {}) };
 
     const [availableSerials, activeBatchStocks, reservedInTransit, damagedValue, soldStockValue, recentSaleKeys] = await Promise.all([
-      ProductSerial.find(serialFilter).select("productId purchasePrice receivedAt currentBranchId").lean(),
+      ProductSerial.find(serialFilter).select("productId purchasePrice currentCostBasis receivedAt currentBranchId").lean(),
       BatchStock.find(batchFilter).select("productId purchasePrice availableQuantity createdAt branchId").lean(),
       getReservedInTransitValue(branchObjectId),
       getDamagedValue(branchObjectId),
@@ -96,7 +97,7 @@ export const getInventoryAnalyticsController = async (req, res) => {
     const branchMap = new Map(); // branchId -> { value }
 
     for (const s of availableSerials) {
-      const value = s.purchasePrice || 0;
+      const value = effectiveSerialCost(s);
       serializedValue += value;
 
       const ageDays = s.receivedAt ? Math.floor((now - new Date(s.receivedAt).getTime()) / DAY_MS) : 0;
@@ -225,16 +226,16 @@ export const getInventoryAnalyticsController = async (req, res) => {
 // ============================================================
 const getReservedInTransitValue = async (branchObjectId) => {
   const serialMatch = { isDeleted: false, status: { $in: ["RESERVED", "IN_TRANSIT"] } };
-  const serials = await ProductSerial.find(serialMatch).select("status currentBranchId assignedBranchId purchasePrice").lean();
+  const serials = await ProductSerial.find(serialMatch).select("status currentBranchId assignedBranchId purchasePrice currentCostBasis").lean();
 
   let reservedValue = 0;
   let inTransitValue = 0;
   for (const s of serials) {
     if (s.status === "RESERVED" && (!branchObjectId || String(s.currentBranchId) === String(branchObjectId))) {
-      reservedValue += s.purchasePrice || 0;
+      reservedValue += effectiveSerialCost(s);
     }
     if (s.status === "IN_TRANSIT" && (!branchObjectId || String(s.assignedBranchId) === String(branchObjectId))) {
-      inTransitValue += s.purchasePrice || 0;
+      inTransitValue += effectiveSerialCost(s);
     }
   }
 
@@ -277,7 +278,7 @@ const getDamagedValue = async (branchObjectId) => {
   const batchMatch = { status: { $ne: "CANCELLED" }, damagedQuantity: { $gt: 0 }, ...(branchObjectId ? { branchId: branchObjectId } : {}) };
 
   const [[serialAgg], batchRows] = await Promise.all([
-    ProductSerial.aggregate([{ $match: serialMatch }, { $group: { _id: null, total: { $sum: "$purchasePrice" } } }]),
+    ProductSerial.aggregate([{ $match: serialMatch }, { $group: { _id: null, total: { $sum: COST_BASIS_EXPR } } }]),
     BatchStock.find(batchMatch).select("damagedQuantity purchasePrice").lean(),
   ]);
 

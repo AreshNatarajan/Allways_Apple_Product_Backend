@@ -1,4 +1,5 @@
 // controllers/sale/getExchangeReplacementUnit.controller.js
+import { effectiveSerialCost } from "../../services/inventory/serialCostBasis.js";
 import mongoose from "mongoose";
 import Sale from "../../models/Sale.modal.js";
 import ProductSerial from "../../models/ProductSerial.modal.js";
@@ -88,7 +89,7 @@ export const getExchangeReplacementUnitController = async (req, res) => {
             isSerialized: true,
             serialNumber: serialMatch.serialNumber,
             productSerialId: serialMatch._id,
-            purchasePrice: serialMatch.purchasePrice || 0,
+            purchasePrice: effectiveSerialCost(serialMatch),
             sellingPrice: serialMatch.sellingPrice || 0,
             gstApplicable: serialMatch.gstApplicable || false,
             gstPercent: gstConfig.marginSchemeRate || 0,

@@ -1,6 +1,7 @@
 
 // controllers/sale/getScannerBarcodeByAvailableProductController.js
 
+import { effectiveSerialCost } from "../../services/inventory/serialCostBasis.js";
 import mongoose from "mongoose";
 import ProductSerial from "../../models/ProductSerial.modal.js";
 import BatchStock from "../../models/BatchStock.model.js";
@@ -161,7 +162,7 @@ export const getScannerBarcodeByAvailableProductController = async (req, res) =>
             // (`product.modelNumber`), never per-unit.
             // --------------------------------------------------------
 
-            const purchasePrice = serialMatch.purchasePrice || 0;
+            const purchasePrice = effectiveSerialCost(serialMatch);
             const sellingPrice = serialMatch.sellingPrice || 0;
             const gstApplicable = serialMatch.gstApplicable || false;
             // Margin-scheme output GST - the exact same source

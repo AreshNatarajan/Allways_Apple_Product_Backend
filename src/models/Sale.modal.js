@@ -603,6 +603,15 @@ const salesSchema = new mongoose.Schema(
           sellingPrice: { type: Number, default: 0, min: 0 },
           productSerialId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductSerial", default: null },
           batchStockId: { type: mongoose.Schema.Types.ObjectId, ref: "BatchStock", default: null },
+          // EXTERNAL (default, every existing entry) = Type 1: a customer's
+          // item received into stock via a new CUSTOMER_EXCHANGE Purchase.
+          // SHOWROOM_UNIT = Type 2: one of OUR OWN previously-sold serials
+          // coming back - the existing ProductSerial is reused (no new
+          // Purchase/serial); showroomExchangeId points at its
+          // SaleShowroomExchange history record. purchasePrice on such an
+          // entry is the staff-entered exchange value.
+          exchangeKind: { type: String, enum: ["EXTERNAL", "SHOWROOM_UNIT"], default: "EXTERNAL" },
+          showroomExchangeId: { type: mongoose.Schema.Types.ObjectId, ref: "SaleShowroomExchange", default: null },
           _id: false,
         },
       ],

@@ -1,4 +1,5 @@
 // controllers/dashboard/getDashboardController.js
+import { effectiveSerialCost, COST_BASIS_EXPR } from "../../services/inventory/serialCostBasis.js";
 import mongoose from "mongoose";
 import Branch from "../../models/Branch.modal.js";
 import Product from "../../models/Product.modal.js";
@@ -744,7 +745,7 @@ const getStockOverview = async (branchObjectId, thresholds) => {
     if (branchObjectId) batchFilter.branchId = branchObjectId;
 
     const [serials, batchStocks] = await Promise.all([
-        ProductSerial.find(serialFilter).select("productId status purchasePrice sellingPrice").lean(),
+        ProductSerial.find(serialFilter).select("productId status purchasePrice currentCostBasis sellingPrice").lean(),
         BatchStock.find(batchFilter).select("productId availableQuantity purchasePrice sellingPrice status").lean(),
     ]);
 
@@ -757,7 +758,7 @@ const getStockOverview = async (branchObjectId, thresholds) => {
         if (key) serializedProductIds.add(key);
         if (s.status === "AVAILABLE") {
             availableSerials++;
-            purchaseValue += s.purchasePrice || 0;
+            purchaseValue += effectiveSerialCost(s);
             if (key) serialAvailByProduct.set(key, (serialAvailByProduct.get(key) || 0) + 1);
         }
     }
@@ -1023,7 +1024,7 @@ const getBranchComparison = async (dateFilter) => {
         Sale.find(saleMatch).select("branchId totalAmount totalProfit").lean(),
         Purchase.find(purchaseMatch).select("branchId items.branchId items.totalPrice totalAmount poType").lean(),
         Branch.find({ isActive: true, isDeleted: false }).select("name").lean(),
-        ProductSerial.find({ isDeleted: false, status: "AVAILABLE" }).select("currentBranchId purchasePrice").lean(),
+        ProductSerial.find({ isDeleted: false, status: "AVAILABLE" }).select("currentBranchId purchasePrice currentCostBasis").lean(),
         BatchStock.find({ status: "ACTIVE" }).select("branchId availableQuantity purchasePrice").lean(),
     ]);
 
@@ -1049,7 +1050,7 @@ const getBranchComparison = async (dateFilter) => {
     }
     for (const s of serials) {
         const key = s.currentBranchId?.toString();
-        if (key && byBranch.has(key)) byBranch.get(key).inventoryValue += s.purchasePrice || 0;
+        if (key && byBranch.has(key)) byBranch.get(key).inventoryValue += effectiveSerialCost(s);
     }
     for (const b of batchStocks) {
         const key = b.branchId?.toString();
@@ -1249,6 +1250,8 @@ const buildActivityMessage = (m) => {
             return `Transferred in (${Math.abs(m.quantityDelta)} unit${Math.abs(m.quantityDelta) === 1 ? "" : "s"})`;
         case "SALE":
             return `Sold (${Math.abs(m.quantityDelta)} unit${Math.abs(m.quantityDelta) === 1 ? "" : "s"})`;
+        case "SHOWROOM_EXCHANGE_RETURN":
+            return "Sold unit taken back in exchange";
         case "DAMAGE":
             return "Marked as damaged";
         case "REJECT":

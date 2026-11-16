@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import { requestLogger, registerProcessErrorLogging } from "./middleware/requestLogger.js";
 import dns from "node:dns";
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
@@ -57,6 +58,8 @@ app.use(cors({
 connectDB();
 
 // Middlewares
+registerProcessErrorLogging();
+app.use(requestLogger); // dev terminal request/error log - see middleware/requestLogger.js
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());

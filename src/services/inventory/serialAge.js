@@ -14,7 +14,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const getLastReturnDates = async (serialIds) => {
     if (!serialIds || serialIds.length === 0) return new Map();
     const rows = await StockMovement.aggregate([
-        { $match: { type: "RETURN", serialId: { $in: serialIds } } },
+        { $match: { type: { $in: ["RETURN", "SHOWROOM_EXCHANGE_RETURN"] }, serialId: { $in: serialIds } } },
         { $group: { _id: "$serialId", returnedAt: { $max: "$performedAt" } } },
     ]);
     return new Map(rows.map((r) => [String(r._id), r.returnedAt]));

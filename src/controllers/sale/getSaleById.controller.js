@@ -1,6 +1,7 @@
 // controllers/sale/getSaleById.controller.js
 import Sale from "../../models/Sale.modal.js";
 import SaleEditHistory from "../../models/SaleEditHistory.modal.js";
+import SaleShowroomExchange from "../../models/SaleShowroomExchange.modal.js";
 import { buildCustomerLink, buildShortLink } from "../../config/customerApp.js";
 import {
     successResponse,
@@ -130,10 +131,22 @@ export const getSaleByIdController = async (req, res) => {
             .populate("editedBy", "name email")
             .lean();
 
+        // Showroom re-exchange (Type 2) links, both directions: units this
+        // sale TOOK BACK (newSaleId) and units that left this sale in a
+        // later exchange (originalSaleId). Cost-basis fields are never
+        // returned here (admin-only data lives in the inventory screens).
+        const showroomFields = "newSaleId newSaleNumber originalSaleId originalSaleNumber productId productName productSerialId serialNumber exchangeValue saleValue conditionNote originalSaleLine.modelNumber exchangedAt originalSoldAt processStatus";
+        const [showroomExchangesIn, showroomExchangesOut] = await Promise.all([
+            SaleShowroomExchange.find({ newSaleId: sale._id, isDeleted: false }).select(showroomFields).sort({ exchangedAt: 1 }).lean(),
+            SaleShowroomExchange.find({ originalSaleId: sale._id, isDeleted: false }).select(showroomFields).sort({ exchangedAt: 1 }).lean(),
+        ]);
+
         const responseData = {
             ...sale,
             items: formattedItems,
             editHistory,
+            showroomExchangesIn,
+            showroomExchangesOut,
             // Ready-to-use link for Sale Detail's own "Copy" action (see
             // NotesCard.jsx) - built here rather than making the frontend
             // know CUSTOMER_APP_URL itself, so there's exactly one place
