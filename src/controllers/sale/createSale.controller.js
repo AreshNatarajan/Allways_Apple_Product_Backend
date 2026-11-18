@@ -899,7 +899,22 @@ export const createSaleController = async (req, res) => {
         console.error("Create Sale Error:", error);
 
         if (error.code === 11000) {
-            return errorResponse(res, "Duplicate sale number", 400);
+            // Identify which unique index actually failed - this branch also
+            // catches duplicates from other writes in the transaction, not
+            // only saleNumber. Full error is already logged above.
+            const duplicateField = Object.keys(error.keyPattern || {})[0] || null;
+            console.error("Create Sale duplicate key:", { keyPattern: error.keyPattern, keyValue: error.keyValue });
+
+            if (duplicateField === "saleNumber") {
+                return errorResponse(res, "Duplicate sale number", 400);
+            }
+            return errorResponse(
+                res,
+                duplicateField
+                    ? `Duplicate value for ${duplicateField}${error.keyValue?.[duplicateField] !== undefined ? `: ${error.keyValue[duplicateField]}` : ""}`
+                    : "Duplicate value conflict while creating sale",
+                400
+            );
         }
 
         return errorResponse(res, error.message || "Error creating sale", 500);
