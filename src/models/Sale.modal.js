@@ -860,7 +860,22 @@ salesSchema.index({ isDeleted: 1, status: 1, branchId: 1, saleDate: -1 });
 // unique as a hard backstop alongside the crypto-random generation
 // itself, so a collision could never silently grant access to the
 // wrong sale.
-salesSchema.index({ customerAccessToken: 1 }, { unique: true, sparse: true });
+// Partial (not sparse): the field has `default: null`, and a sparse index
+// still indexes explicit nulls - so a 2nd sale with a null token hit
+// E11000 on { customerAccessToken: null }. Only real, non-empty string
+// tokens are indexed/unique here ($type string + $gt "" keeps only
+// non-empty strings, so null, missing and "" are all excluded). The explicit name
+// differs from the old default "customerAccessToken_1" on purpose: it lets
+// the new index be created alongside the old sparse one and the old one
+// dropped afterwards - see the migration notes handed over with this fix.
+salesSchema.index(
+  { customerAccessToken: 1 },
+  {
+    name: "customerAccessToken_partial_unique",
+    unique: true,
+    partialFilterExpression: { customerAccessToken: { $type: "string", $gt: "" } },
+  }
+);
 // Short-link lookup (resolveCustomerShortLink) - unique so two sales can
 // never share a code (a generation collision fails the write and is
 // retried with a fresh code). Partial on string values: only sales that
